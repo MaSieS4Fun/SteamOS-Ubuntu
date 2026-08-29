@@ -1,0 +1,3 @@
+# GitHub Pages flat apt repo (MaSi channel) — reliable acquire + upgrade paths.
+Acquire::CompressionTypes::Order:: "gz";
+APT::Get::AllowLocalDowngrade "true";

@@ -47,10 +47,18 @@ if [[ ! -x "${KERN_ROOT}/make.sh" ]]; then
   die "Missing ${KERN_ROOT}/make.sh and no kbase output"
 fi
 
-# Non-interactive one-shot (create-image / build-image). Pin matches defaults.conf.
-export KERNEL_VER="${KERNEL_VER:-7.0.14}"
+# Non-interactive one-shot (create-image / build-image). Pin from channel.conf when set.
+if [[ -f "${ROOT_DIR}/packaging/apt/channel.conf" ]]; then
+  # shellcheck source=packaging/apt/channel.conf
+  source "${ROOT_DIR}/packaging/apt/channel.conf"
+  _kr="${KERNEL_VER:-7.2.2-edge-sm8550}"
+  export KERNEL_VER="${_kr%%-edge-sm8550}"
+  export PREFERRED_KERNEL_SERIES="${PREFERRED_KERNEL_SERIES:-${KERNEL_VER%%.*}}"
+else
+  export KERNEL_VER="${KERNEL_VER:-7.2.2}"
+  export PREFERRED_KERNEL_SERIES="${PREFERRED_KERNEL_SERIES:-7.2}"
+fi
 export UI="${UI:-plain}"
-export PREFERRED_KERNEL_SERIES="${PREFERRED_KERNEL_SERIES:-7.0}"
 
 log "No kernel output — running vendor/kernel/make.sh (KERNEL_VER=${KERNEL_VER}, UI=${UI})"
 # make(1) prints "Entering directory …" on stdout under --print-directory —

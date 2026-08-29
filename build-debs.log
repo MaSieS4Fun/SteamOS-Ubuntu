@@ -1,0 +1,37 @@
+==> [build-debs] Building debs → /home/steam/Desktop/SteamOS-Ubuntu/output/debs
+==> [build-debs] Staging mesa-easy-manager 1.0.1 (arm64)…
+dpkg-deb: building package 'mesa-easy-manager' in '/home/steam/Desktop/SteamOS-Ubuntu/output/debs/mesa-easy-manager_1.0.1_arm64.deb'.
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/mesa-easy-manager_1.0.1_arm64.deb
+==> [build-debs] Staging easy-ufs-install 1.0.0 (arm64)…
+dpkg-deb: building package 'easy-ufs-install' in '/home/steam/Desktop/SteamOS-Ubuntu/output/debs/easy-ufs-install_1.0.0_arm64.deb'.
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/easy-ufs-install_1.0.0_arm64.deb
+==> [build-debs] Staging proton-arm-easy-manager 1.0.0 (arm64)…
+dpkg-deb: building package 'proton-arm-easy-manager' in '/home/steam/Desktop/SteamOS-Ubuntu/output/debs/proton-arm-easy-manager_1.0.0_arm64.deb'.
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/proton-arm-easy-manager_1.0.0_arm64.deb
+==> [build-debs] Staging no-steam-games 1.0.1 (arm64)…
+dpkg-deb: building package 'no-steam-games' in '/home/steam/Desktop/SteamOS-Ubuntu/output/debs/no-steam-games_1.0.1_arm64.deb'.
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/no-steam-games_1.0.1_arm64.deb
+==> [build-debs] Staging gyro-desktop 1.0.0 (arm64)…
+==> [gyro-desktop] Install binaries → /home/steam/Desktop/SteamOS-Ubuntu/output/deb-work/gyro-desktop/usr/bin
+==> [gyro-desktop] Install gamescope-session (calls gyro-desktop-gamescope)
+==> [gyro-desktop] Done.
+==> [gyro-desktop]   Fix GM now:  sudo gyro-desktop-gamescope
+==> [gyro-desktop]   Desktop pad:  sudo gyro-desktop-plasma
+==> [gyro-desktop]   App:          gyro-fix
+dpkg-deb: building package 'gyro-desktop' in '/home/steam/Desktop/SteamOS-Ubuntu/output/debs/gyro-desktop_1.0.0_arm64.deb'.
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/gyro-desktop_1.0.0_arm64.deb
+==> [build-debs] Staging masi-kernel-edge-sm8550 7.2.2-edge-sm8550-2 (arm64)…
+==> [build-debs] Embedded kernel bundle: 7.2.2-edge-sm8550-kbase (169M)
+dpkg-deb: building package 'masi-kernel-edge-sm8550' in '/home/steam/Desktop/SteamOS-Ubuntu/output/debs/masi-kernel-edge-sm8550_7.2.2-edge-sm8550-2_arm64.deb'.
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/masi-kernel-edge-sm8550_7.2.2-edge-sm8550-2_arm64.deb
+==> [build-debs] Staging steamos-ubuntu-apps 1.0.1 (all)…
+dpkg-deb: building package 'steamos-ubuntu-apps' in '/home/steam/Desktop/SteamOS-Ubuntu/output/debs/steamos-ubuntu-apps_1.0.1_all.deb'.
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/steamos-ubuntu-apps_1.0.1_all.deb
+==> [build-debs] Done:
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/easy-ufs-install_1.0.0_arm64.deb
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/gyro-desktop_1.0.0_arm64.deb
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/masi-kernel-edge-sm8550_7.2.2-edge-sm8550-2_arm64.deb
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/mesa-easy-manager_1.0.1_arm64.deb
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/no-steam-games_1.0.1_arm64.deb
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/proton-arm-easy-manager_1.0.0_arm64.deb
+/home/steam/Desktop/SteamOS-Ubuntu/output/debs/steamos-ubuntu-apps_1.0.1_all.deb

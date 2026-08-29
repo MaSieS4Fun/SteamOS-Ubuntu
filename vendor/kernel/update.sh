@@ -13,7 +13,8 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export ROOT
-export OUTPUT_DIR="${ROOT}/output"
+export OUTPUT_DIR="${OUTPUT_DIR:-${ROOT}/output}"
+mkdir -p "${OUTPUT_DIR}"
 
 # shellcheck source=config/defaults.conf
 source "${ROOT}/config/defaults.conf"

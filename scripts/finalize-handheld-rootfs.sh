@@ -854,6 +854,13 @@ if [[ "${SKIP_STEAMOS_APT_SOURCE:-0}" != "1" ]] \
   "${ROOT_DIR}/scripts/install-steamos-ubuntu-apt-source.sh" "$ROOTFS"
 fi
 
+# Register MaSi .deb packages in dpkg (future apt upgrade on devices)
+if [[ "${SKIP_STEAMOS_APT_PACKAGES:-0}" != "1" ]] \
+  && [[ -x "${ROOT_DIR}/scripts/install-steamos-ubuntu-apt-packages.sh" ]]; then
+  log "SteamOS-Ubuntu apt packages (dpkg register for apt upgrade)"
+  "${ROOT_DIR}/scripts/install-steamos-ubuntu-apt-packages.sh" "$ROOTFS"
+fi
+
 # Marker for QA
 install -d "${ROOTFS}/usr/share/sm8550-steamos"
 {

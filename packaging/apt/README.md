@@ -38,12 +38,15 @@ Versiones en `packaging/apt/channel.conf`.
 ## Build local
 
 ```bash
+# 0) Kernel kbase must exist (embedded in the .deb — apt upgrade flashes it)
+cd vendor/kernel && KERNEL_VER=7.2.2 ./make.sh
+cd ../..
+
 # 1) Clave de firma (una vez)
 ./scripts/apt-generate-signing-key.sh
 
-# 2) Construir .deb
+# 2) Construir .deb (BUILD_KERNEL_DEB=1 by default)
 ./scripts/build-debs.sh
-BUILD_KERNEL_DEB=1 ./scripts/build-debs.sh   # incluir kernel kbase en el .deb
 
 # 3) Índice apt
 APT_SIGN=1 ./scripts/generate-apt-repo.sh
@@ -58,13 +61,20 @@ sudo apt install steamos-ubuntu-apps
 
 ## Imagen (bake)
 
-`finalize-handheld-rootfs.sh` llama a `install-steamos-ubuntu-apt-source.sh`.
+`finalize-handheld-rootfs.sh` llama a:
 
-Override del repo GitHub:
+1. `install-steamos-ubuntu-apt-source.sh` — `steamos-ubuntu.list` + GPG
+2. `install-steamos-ubuntu-apt-packages.sh` — instala `.deb` con **`apt-get install /path/*.deb`** (no `dpkg -i` suelto)
+
+Usar **apt** en el bake registra el origen de cada paquete; en el dispositivo basta:
 
 ```bash
-STEAMOS_UBUNTU_GITHUB_REPO=TuOrg/SteamOS-Ubuntu sudo ./create-image.sh
+sudo apt update && sudo apt upgrade
 ```
+
+`system_files/etc/apt/apt.conf.d/90steamos-flat-repo` optimiza el repo plano en GitHub Pages.
+
+Durante el bake, `STEAMOS_APT_BAKE=1` hace que el postinst del kernel **no reflashee** (el kernel ya está en la imagen); solo registra dpkg.
 
 ## CI / GitHub Pages
 
@@ -91,6 +101,7 @@ sudo apt install steamos-ubuntu-apps
 Kernel tras upgrade del paquete `masi-kernel-edge-sm8550`:
 
 ```bash
-sudo masi-kernel-update
+sudo apt update && sudo apt upgrade   # postinst flashea el kernel embebido
 sudo reboot
+uname -r   # p. ej. 7.2.2-edge-sm8550
 ```

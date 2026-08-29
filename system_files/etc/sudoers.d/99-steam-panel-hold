@@ -1,0 +1,9 @@
+# SteamOS-Ubuntu: steam may manage panel-hold without a password (gamescope boot path).
+Cmnd_Alias STEAMOS_PANEL_HOLD = \
+  /usr/libexec/steamos-ubuntu/steamos-panel-hold hold, \
+  /usr/libexec/steamos-ubuntu/steamos-panel-hold release, \
+  /bin/systemctl start steamos-panel-hold.service, \
+  /bin/systemctl stop steamos-panel-hold.service, \
+  /usr/bin/systemctl start steamos-panel-hold.service, \
+  /usr/bin/systemctl stop steamos-panel-hold.service
+steam ALL=(root) NOPASSWD: STEAMOS_PANEL_HOLD

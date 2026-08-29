@@ -1,0 +1,4 @@
+# Ubuntu docker base ships docker-clean which disables pkgcache (breaks "apt install foo-" tab completion).
+# Restore normal cache paths on baked handheld images.
+Dir::Cache::pkgcache "/var/cache/apt/pkgcache.bin";
+Dir::Cache::srcpkgcache "/var/cache/apt/srcpkgcache.bin";

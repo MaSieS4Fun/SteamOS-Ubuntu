@@ -344,7 +344,9 @@ short_fail=0
 for cycle in $(seq 1 "$max_cycles"); do
   session_debug "===== session cycle $cycle/$max_cycles ====="
   if [[ ! -f /run/steamos-ubuntu/panel-hold.active ]]; then
-    systemctl start steamos-panel-hold.service 2>/dev/null || true
+    if ! systemctl is-active --quiet steamos-panel-hold.service 2>/dev/null; then
+      sudo /usr/libexec/steamos-ubuntu/steamos-panel-hold hold &
+    fi
   fi
 
   tmpdir="$(mktemp -d -p "$XDG_RUNTIME_DIR" gamescope.XXXXXX)"
@@ -411,9 +413,8 @@ for cycle in $(seq 1 "$max_cycles"); do
   session_debug "gamescope ready: DISPLAY=$DISPLAY GAMESCOPE_WAYLAND_DISPLAY=$GAMESCOPE_WAYLAND_DISPLAY pid=$gamescope_pid"
   session_debug "display-manager target: wayland: modeset (GAMESCOPE_WAYLAND_DISPLAY set, XDG_SESSION_TYPE unset)"
   if [[ -x /usr/libexec/steamos-ubuntu/steamos-panel-hold ]]; then
-    /usr/libexec/steamos-ubuntu/steamos-panel-hold release
+    sudo /usr/libexec/steamos-ubuntu/steamos-panel-hold release
   fi
-  systemctl stop steamos-panel-hold.service 2>/dev/null || true
 
   # Physical volume rocker → PipeWire (grabbed exclusive; Steam OSD would stick).
   if [[ -x /usr/libexec/steamos-ubuntu/volume-keys ]]; then

@@ -98,14 +98,7 @@ install_cleanup_staging() {
 install_pick_build() {
     local build="${UPDATE_BUILD:-}" builds=() i newest=0 pick_ts=0 ts
 
-    install_list_builds
-    builds=("${install_list_builds_result[@]}")
-
-    if [[ ${#builds[@]} -eq 0 ]]; then
-        echo "No builds in ${OUTPUT_DIR}/ (missing boot/KERNEL). Run ./make.sh first." >&2
-        return 1
-    fi
-
+    # Explicit build (apt bundle, UPDATE_BUILD=…) wins over scanning OUTPUT_DIR.
     if [[ -n "${build}" ]]; then
         [[ -d "${build}" ]] || build="${OUTPUT_DIR}/${build}"
         [[ -f "${build}/boot/KERNEL" ]] || {
@@ -114,6 +107,14 @@ install_pick_build() {
         }
         SELECTED_INSTALL_BUILD="${build}"
         return 0
+    fi
+
+    install_list_builds
+    builds=("${install_list_builds_result[@]}")
+
+    if [[ ${#builds[@]} -eq 0 ]]; then
+        echo "No builds in ${OUTPUT_DIR}/ (missing boot/KERNEL). Run ./make.sh first." >&2
+        return 1
     fi
 
     if [[ ${#builds[@]} -eq 1 ]]; then
@@ -298,6 +299,11 @@ install_from_build() {
         cp -a "${modules_src}" "${INSTALL_MODULES_DST}/"
     else
         echo "  WARNING: no modules/${release}/ — skipping modules" >&2
+    fi
+
+    if [[ "${INSTALL_MINIMAL:-0}" == "1" ]]; then
+        echo "==> Install complete (${release})" >&2
+        return 0
     fi
 
     {

@@ -41,9 +41,11 @@ chmod 0755 "${bin}/no-steam-games"
 
 icon_name="applications-games"
 if [[ -f "${VENDOR}/data/icons/no-steam-games.png" ]]; then
-  install -d "${ROOTFS}/usr/share/icons/hicolor/256x256/apps"
-  install -m 0644 "${VENDOR}/data/icons/no-steam-games.png" \
-    "${ROOTFS}/usr/share/icons/hicolor/256x256/apps/no-steam-games.png"
+  for size in 16 24 32 48 64 128 256 512; do
+    install -d "${ROOTFS}/usr/share/icons/hicolor/${size}x${size}/apps"
+    install -m 0644 "${VENDOR}/data/icons/no-steam-games.png" \
+      "${ROOTFS}/usr/share/icons/hicolor/${size}x${size}/apps/no-steam-games.png"
+  done
   icon_name="no-steam-games"
 fi
 

@@ -37,6 +37,8 @@ log "Generating Packages index (${#debs[@]} debs)"
 (
     cd "${OUT_REPO}"
     apt-ftparchive packages . > Packages
+    # Flat repos: some apt versions break --reinstall when Filename starts with ./
+    sed -i 's|^Filename: \./|Filename: |' Packages
 )
 gzip -9cn "${OUT_REPO}/Packages" > "${OUT_REPO}/Packages.gz"
 

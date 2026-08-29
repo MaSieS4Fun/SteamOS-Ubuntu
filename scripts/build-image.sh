@@ -61,7 +61,8 @@ install -d "${ROOTFS}/usr/share/sm8550-steamos"
 
 # --- Kernel first (firmware + modules); replaces any Ubuntu firmware ---
 # ensure-kernel auto-compiles via vendor/kernel/make.sh when output/ is empty
-export KERNEL_VER="${KERNEL_VER:-7.0.14}"
+# KERNEL_VER exported by create-image.sh from packaging/apt/channel.conf (base series, e.g. 7.2.2)
+export KERNEL_VER="${KERNEL_VER:-7.2.2}"
 export UI="${UI:-plain}"
 log "Ensuring / integrating SM8550 kernel (KERNEL_VER=${KERNEL_VER})"
 KERN_BUILD="$("${ROOT_DIR}/scripts/ensure-kernel.sh")"

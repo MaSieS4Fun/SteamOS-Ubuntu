@@ -4,7 +4,7 @@
 # Usage:
 #   ./scripts/build-debs.sh
 #   KERNEL_VER=7.2.2-edge-sm8550 ./scripts/build-debs.sh
-#   BUILD_KERNEL_DEB=1 ./scripts/build-debs.sh   # embed vendor/kernel/output/*-kbase
+#   BUILD_KERNEL_DEB=1 ./scripts/build-debs.sh   # default — embed vendor/kernel/output/*-kbase
 #
 set -euo pipefail
 
@@ -14,10 +14,28 @@ source "${ROOT_DIR}/packaging/apt/channel.conf"
 
 OUT_DEBS="${OUT_DEBS:-${ROOT_DIR}/output/debs}"
 WORK="${WORK:-${ROOT_DIR}/output/deb-work}"
-BUILD_KERNEL_DEB="${BUILD_KERNEL_DEB:-0}"
+BUILD_KERNEL_DEB="${BUILD_KERNEL_DEB:-1}"
 
 log() { printf '==> [build-debs] %s\n' "$*" >&2; }
 die() { printf 'ERROR: [build-debs] %s\n' "$*" >&2; exit 1; }
+
+resolve_kernel_kbase_dir() {
+    local suffix="${OUTPUT_SUFFIX:-kbase}" kbase=""
+    kbase="${ROOT_DIR}/vendor/kernel/output/${KERNEL_VER}-${suffix}"
+    if [[ -f "${kbase}/boot/KERNEL" ]]; then
+        printf '%s\n' "${kbase}"
+        return 0
+    fi
+    shopt -s nullglob
+    local candidates=( "${ROOT_DIR}/vendor/kernel/output/"*-"${suffix}"/ )
+    shopt -u nullglob
+    for kbase in "${candidates[@]}"; do
+        [[ -f "${kbase}/boot/KERNEL" ]] || continue
+        printf '%s\n' "${kbase}"
+        return 0
+    done
+    return 1
+}
 
 # shellcheck source=packaging/deb/common/mkdeb.sh
 source "${ROOT_DIR}/packaging/deb/common/mkdeb.sh"
@@ -240,9 +258,11 @@ EOF
     chmod 0755 "${staging}/usr/bin/no-steam-games"
 
     if [[ -f "${vendor}/data/icons/no-steam-games.png" ]]; then
-        install -d "${staging}/usr/share/icons/hicolor/256x256/apps"
-        install -m 0644 "${vendor}/data/icons/no-steam-games.png" \
-            "${staging}/usr/share/icons/hicolor/256x256/apps/no-steam-games.png"
+        for size in 16 24 32 48 64 128 256 512; do
+            install -d "${staging}/usr/share/icons/hicolor/${size}x${size}/apps"
+            install -m 0644 "${vendor}/data/icons/no-steam-games.png" \
+                "${staging}/usr/share/icons/hicolor/${size}x${size}/apps/no-steam-games.png"
+        done
     fi
 
     cat > "${staging}/usr/share/applications/no-steam-games.desktop" <<'EOF'
@@ -298,6 +318,7 @@ stage_masi_kernel() {
         "${staging}/usr/bin" "${staging}/usr/share/masi/kernel-bundles"
 
     install -m 0755 "${ROOT_DIR}/vendor/kernel/update.sh" "${kroot}/update.sh"
+    install -m 0755 "${ROOT_DIR}/vendor/kernel/apt-install.sh" "${kroot}/apt-install.sh"
     install -m 0644 "${ROOT_DIR}/vendor/kernel/config/defaults.conf" "${kroot}/config/defaults.conf"
     for f in install.sh cmdline.sh bootimg.sh; do
         install -m 0644 "${ROOT_DIR}/vendor/kernel/lib/${f}" "${kroot}/lib/${f}"
@@ -323,31 +344,41 @@ exec "${ROOT}/update.sh"
 EOF
     chmod 0755 "${staging}/usr/bin/masi-kernel-update"
 
+    bundle_dir=""
     if [[ "${BUILD_KERNEL_DEB}" == "1" ]]; then
-        shopt -s nullglob
-        for kbase in "${ROOT_DIR}/vendor/kernel/output/"*-"${OUTPUT_SUFFIX:-kbase}"/; do
-            [[ -f "${kbase}/boot/KERNEL" ]] || continue
-            bundle_dir="${kbase}"
-            break
-        done
-        shopt -u nullglob
-        [[ -n "${bundle_dir}" ]] || die "BUILD_KERNEL_DEB=1 but no vendor/kernel/output/*-kbase found"
+        bundle_dir="$(resolve_kernel_kbase_dir)" || die \
+            "kernel kbase missing for ${KERNEL_VER} — compile first:\n" \
+            "  cd vendor/kernel && KERNEL_VER=${KERNEL_VER%%-*} ./make.sh"
         release="$(basename "${bundle_dir}")"
         install -d "${staging}/usr/share/masi/kernel-bundles/${release}"
         cp -a "${bundle_dir}/." "${staging}/usr/share/masi/kernel-bundles/${release}/"
         ln -sfn "${release}" "${staging}/usr/share/masi/kernel-bundles/current"
-        log "Embedded kernel bundle: ${release}"
+        log "Embedded kernel bundle: ${release} ($(du -sh "${bundle_dir}" | cut -f1))"
+    else
+        die "BUILD_KERNEL_DEB=0 — apt kernel package must embed vendor/kernel/output/*-kbase"
     fi
 
-    cat > "${staging}/DEBIAN/postinst" <<'EOF'
+    cat > "${staging}/DEBIAN/postinst" <<POSTINST
 #!/bin/sh
 set -e
-if [ "$1" = "configure" ] && [ -d /usr/share/masi/kernel-bundles/current ]; then
-    if command -v masi-kernel-update >/dev/null 2>&1; then
-        UPDATE_YES=1 masi-kernel-update || true
+# Flash embedded kernel on apt install/upgrade when deb version changes.
+STAMP=/var/lib/masi/kernel-bundles/.installed-deb-version
+VER="${PKG_MASI_KERNEL_EDGE_SM8550}"
+if [ "\$1" = "configure" ] && [ -d /usr/share/masi/kernel-bundles/current ]; then
+    if [ -f "\$STAMP" ] && [ "\$(cat "\$STAMP")" = "\$VER" ]; then
+        exit 0
     fi
+    # Image bake: kernel already flashed by vendor/kernel — only register dpkg + bundle.
+    if [ -n "\${STEAMOS_APT_BAKE:-}" ]; then
+        mkdir -p /var/lib/masi/kernel-bundles
+        echo "\$VER" > "\$STAMP"
+        exit 0
+    fi
+    /usr/lib/masi/kernel/apt-install.sh
+    mkdir -p /var/lib/masi/kernel-bundles
+    echo "\$VER" > "\$STAMP"
 fi
-EOF
+POSTINST
     chmod 0755 "${staging}/DEBIAN/postinst"
 
     write_control "${staging}" <<EOF
@@ -356,9 +387,8 @@ Version: ${PKG_MASI_KERNEL_EDGE_SM8550}
 Architecture: arm64
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
 Depends: abootimg, rsync, coreutils, util-linux, findutils, grep, sed, gawk, mount
-Description: MaSi SM8550 edge kernel updater (ABL bootimg + UUID repack)
- Installs masi-kernel-update. When the deb embeds a kbase bundle, postinst runs
- the local install. Otherwise download a release tarball and run masi-kernel-update.
+Description: MaSi SM8550 edge kernel (${KERNEL_VER}) — apt install/upgrade flashes boot/firmware/modules
+ Embeds kernel bundle; postinst repacks KERNEL for this device and installs boot/firmware/modules.
  Homepage: https://github.com/${STEAMOS_UBUNTU_GITHUB_REPO}
 EOF
 }
@@ -403,6 +433,7 @@ build_one() {
 command -v dpkg-deb >/dev/null 2>&1 || die "install dpkg-deb (apt install dpkg-dev)"
 
 mkdir -p "${OUT_DEBS}" "${WORK}"
+rm -f "${OUT_DEBS}"/*.deb 2>/dev/null || true
 rm -rf "${WORK:?}"/*
 mkdir -p "${WORK}"
 

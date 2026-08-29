@@ -34,7 +34,7 @@ fi
 
 git push origin main
 
-log "2/5 — build .deb packages"
+log "2/5 — build .deb packages (kernel kbase embedded)"
 ./scripts/build-debs.sh
 
 log "3/5 — signed apt repo"
