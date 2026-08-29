@@ -3,12 +3,12 @@ Architecture: arm64
 Version: 1.0.0
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
 Depends: python3, python3-gi, gir1.2-gtk-3.0, parted, dosfstools, e2fsprogs, rsync, util-linux, abootimg, polkitd, pkexec
-Filename: ./easy-ufs-install_1.0.0_arm64.deb
-Size: 19862
-MD5sum: bd4a69f79421f2b46be19bf24b43c49a
-SHA1: 7915f1f5cae049ad53b64c824a615258cd5468f1
-SHA256: 3d0c755685d8ed4e4c0fae9451cca22bd4ded724eba208f5cb9afdd216339f95
-SHA512: 304fbc63ab855d627936fcbf45d89b3ce6d2a1bc0ff1be87dbe6820b8556db39e38ade2acf2e9cb9559bdbac1b2efc081e1926e74b443a6509a35ebc2107221f
+Filename: easy-ufs-install_1.0.0_arm64.deb
+Size: 19864
+MD5sum: 96e8e89ceb282e44542beb05f43d6712
+SHA1: 8d382dc97418c6cc593d1bc6a9c9c0b8306b53b6
+SHA256: 5f9a8016d9b60c399d04315de0c35727085fb6229e81a9b3aac41206e63e7aee
+SHA512: 29844986073226b3e779db22c9e1a23e989c6a2ff7b4a7c94acf3c1cd9fedd85e9c59922b0a4c2bc3202c798a550d1412096a5f7941a64274c9addcbfe9e2e64
 Description: Easy UFS Installer — dual-boot Linux on internal UFS (AYN / SM8550)
  Homepage: https://github.com/MaSieS4Fun/SteamOS-Ubuntu
 
@@ -17,26 +17,26 @@ Architecture: arm64
 Version: 1.0.0
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
 Depends: python3, python3-gi, gir1.2-gtk-3.0, inputplumber
-Filename: ./gyro-desktop_1.0.0_arm64.deb
-Size: 302156
-MD5sum: 1f47b7cb7a789e667ffa5c9096f90ac1
-SHA1: 739852a2fc1cfe526514101fe3733eac14d3e533
-SHA256: fc7c7ebe6087bc56154bee14c7c6ccdab5aa23b5d5a8dadb43023804670db37d
-SHA512: b595b2edfb370f78922505af5b4b1872e2721ff2f3538c674f0f77b53cf2df7d5556154256cb43e72bc0ae041e1554b746f599072c6c0f0a30a9570e0bfa421a
+Filename: gyro-desktop_1.0.0_arm64.deb
+Size: 302306
+MD5sum: 0ca83a58836724202200524c9cb9eba3
+SHA1: 41b9ad7b0412a509cadee43ef1cd73e966ae4f51
+SHA256: dc01b3fe8495fba78f1d86b39c979e71ab763046c81fa237a06d488d9e52c1f2
+SHA512: 8d0ad42f6ed2e0bf87b7e212020cd9e8862afde621f3c1fa15c4e545f11750c79d2ed80d195801edacb79c6582b9037fd6b11be38102c014bfafd583cc2a6ea6
 Description: GYRO-FIX — gyroscope + pad routing for AYN SM8550 handhelds
  Homepage: https://github.com/MaSieS4Fun/SteamOS-Ubuntu
 
 Package: masi-kernel-edge-sm8550
 Architecture: arm64
-Version: 7.2.2-edge-sm8550-2
+Version: 7.2.2-edge-sm8550-3
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
 Depends: abootimg, rsync, coreutils, util-linux, findutils, grep, sed, gawk, mount
-Filename: ./masi-kernel-edge-sm8550_7.2.2-edge-sm8550-2_arm64.deb
-Size: 80720282
-MD5sum: 1b9b3835aad07eb15c3fe8809d6d6f83
-SHA1: 4cf24a634bedd52abb9e42a61fc39c66906477bf
-SHA256: 10305048bb30a755c5184d2742232501a7a748b373e8b33faf584fc653488ff2
-SHA512: a7b0a64b7ab69005c75c81946ec6896d7389f31db8c64fe023983db6731ba31da010dc42c474bf7ddf601201db6edc8f07c331797a7769e9ee5f6915b6098664
+Filename: masi-kernel-edge-sm8550_7.2.2-edge-sm8550-3_arm64.deb
+Size: 80720270
+MD5sum: 2dfe28bd468d388c288952eed3dabddc
+SHA1: 15ad96c59acc131894e8a68c36961b828dd7fe9b
+SHA256: 84a68a08e44a5971e3467d9d700ccfc609e1210e59c4f402df3ebcf71831a6bb
+SHA512: 4072c17cc43fcfffb5a605103d0a979c03655e4d0d4ecf18da5422f5b6b64c19bbf6fb6b5a4632b8603f779c50f034addd6dc30c2f257bd4d86cde3a9ccc0e2b
 Description: MaSi SM8550 edge kernel (7.2.2-edge-sm8550) — apt install/upgrade flashes boot/firmware/modules
  Embeds kernel bundle; postinst repacks KERNEL for this device and installs boot/firmware/modules.
  Homepage: https://github.com/MaSieS4Fun/SteamOS-Ubuntu
@@ -46,12 +46,12 @@ Architecture: arm64
 Version: 1.0.1
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
 Depends: python3, python3-gi, gir1.2-gtk-3.0, polkitd, pkexec
-Filename: ./mesa-easy-manager_1.0.1_arm64.deb
-Size: 15800
-MD5sum: b75a3db30d21fe615cec93f4bf66bad6
-SHA1: 94f9926afe47dd5f6cbdba9c756a00c959b1e869
-SHA256: 2a16a9b15906faf7478fbf225e422906d315b0bf6b5e338f35f4d65b347cd67d
-SHA512: 61aa70a75ef708b0cb83e0dde935adc5f8cb447732e5d972d7b277b1ef3c86e0b9397640c1654f25962ae7ce4ce1f6ead87145f01e36d448680d3bcc47e7202c
+Filename: mesa-easy-manager_1.0.1_arm64.deb
+Size: 15808
+MD5sum: c22c3fe7e527e5f6882ad906c70e0095
+SHA1: 67f8bf2468eb7da38c22e5ca4a05a4d75727f87d
+SHA256: 54e313fb344a4eb7334b8a42b026aaaa8513e011ec1906873a21fb05ffcdce35
+SHA512: 8fee153d657c796360178e72bd1e8fd614fefdc24a0e4aaf893298c43d6ada819c88ebddb167397dbaa0b6d137b58c6696f4293ab07290bbaa808c9d4af0c54c
 Description: MESA Easy Manager — Freedreno/Turnip Vulkan switcher for Adreno SM8550
  Homepage: https://github.com/MaSieS4Fun/SteamOS-Ubuntu
 
@@ -60,12 +60,12 @@ Architecture: arm64
 Version: 1.0.1
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
 Depends: python3, python3-gi, gir1.2-gtk-3.0
-Filename: ./no-steam-games_1.0.1_arm64.deb
-Size: 54686
-MD5sum: cb123808af228500d220c65072dc943a
-SHA1: 793dc5dcc64499b04b990ab8bce0b1876179d345
-SHA256: c80d757eeb46fb94320368863a8ada1d173f7ca9a7e8b8efff8188f0ae803329
-SHA512: 6efb47c96e00d20fb0289bd7a47cc7d4a4eb774052df4a892dbfbf4b2f779dad03cde71eaeebb546c1803d00b99555af00a9fccb26e803187994264b75d2b799
+Filename: no-steam-games_1.0.1_arm64.deb
+Size: 54684
+MD5sum: f7f0093404be31aa3e752ac440431b6f
+SHA1: 41faebea0f76e785463ecafecb7b8724e4fc05c9
+SHA256: 3b7fefcf81878b5538d2bbb4245af2b92677c3786f25f946969a909de00d7145
+SHA512: ca3acecefe55f5d8fd0d7c7df19e19c6fba8645f517251ce71e3a0e7f81f8b75ce0f2ba7933775f376ca88938ec5c700f62047647bb37b8a8fc7fbce66232eb3
 Description: ARM Non-Steam Games — add DRM-free games to Steam on ARM64
  Homepage: https://github.com/MaSieS4Fun/SteamOS-Ubuntu
 
@@ -74,12 +74,12 @@ Architecture: arm64
 Version: 1.0.0
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
 Depends: python3, python3-gi, gir1.2-gtk-3.0
-Filename: ./proton-arm-easy-manager_1.0.0_arm64.deb
-Size: 469288
-MD5sum: 64f851f6cdb81762f2d2f8cf6f5c2d34
-SHA1: 71cb48ce52bc83a086eb42bdaab43db3a9d07752
-SHA256: 268469f744067f6f3a29bf9ed5c209c8983dd57bc4b49fabd8982a3a981c2f4d
-SHA512: 55d725cd4041a4ddeeab43a3e5c8de037d3054c910d0b476f7662bdb1e8c755efd145127a69acb5ffd976ad6ccf86ab51bc0ee16eca5bc6d1fc4ddb1bf4db35c
+Filename: proton-arm-easy-manager_1.0.0_arm64.deb
+Size: 469280
+MD5sum: 15ac3c92b291a581c2d3f3fa1b30570b
+SHA1: 7ee61e5f4102c0821394a36baee2b61b21b4e968
+SHA256: d132a81f4e9ac35542c5e89d39927f1338cabdc69135095850775e6eb64e8d74
+SHA512: dd66fdccd9250ddef973d05c8e4f2ab7afca911ce1915c0509c56bfb3d5822926ff61b56008e6a78aadf7e8d9af90ac2bb0cb8b5ca65fa5a4e1def02758a7f07
 Description: Proton ARM Easy Manager — install Proton ARM builds for Steam/Lutris/Heroic
  Homepage: https://github.com/MaSieS4Fun/SteamOS-Ubuntu
 
@@ -87,13 +87,13 @@ Package: steamos-ubuntu-apps
 Architecture: all
 Version: 1.0.1
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
-Depends: mesa-easy-manager (>= 1.0.1), easy-ufs-install (>= 1.0.0), proton-arm-easy-manager (>= 1.0.0), no-steam-games (>= 1.0.1), gyro-desktop (>= 1.0.0), masi-kernel-edge-sm8550 (>= 7.2.2-edge-sm8550-2)
-Filename: ./steamos-ubuntu-apps_1.0.1_all.deb
-Size: 672
-MD5sum: c69a6dc6928305bb944a3880372ad0aa
-SHA1: bcd720ee5948273a7340626b8bd0249b46d088cd
-SHA256: a3e36439a6c828a80ad8b824c3082b7a8ab69419537c89c68205483fadef4ce8
-SHA512: ba54bc38e921dc1d3d7ce158516429aead51b665dfcc8182f1049ef9082ef674cb1662ca616c926357cafcd6214203e1020f9e0775954ad83bc097ae61ba3c60
+Depends: mesa-easy-manager (>= 1.0.1), easy-ufs-install (>= 1.0.0), proton-arm-easy-manager (>= 1.0.0), no-steam-games (>= 1.0.1), gyro-desktop (>= 1.0.0), masi-kernel-edge-sm8550 (>= 7.2.2-edge-sm8550-3)
+Filename: steamos-ubuntu-apps_1.0.1_all.deb
+Size: 670
+MD5sum: 097f0c4323e921fbc72a9a04e7f0bcc7
+SHA1: 051c449a4236b0c21931011a5405c9dc898c662a
+SHA256: 268c7aad38f8e2035eeb33217f1869f98f13ed9748eb29cb4b624aec7f26ef00
+SHA512: 51bf8ca6facaa780f7880afce07a9b0d55b518fbbda9883c8cbcacc8c9c5dad2222c816db57a4846a0c2d21040118911cf391065f94c5d9298c2e02e6bd0866a
 Description: SteamOS-Ubuntu gaming apps + kernel updater (metapackage)
  Pulls in ARM Manager apps and the MaSi kernel updater package.
  Homepage: https://github.com/MaSieS4Fun/SteamOS-Ubuntu
