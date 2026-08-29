@@ -1,0 +1,15 @@
+# Plasma PowerDevil — power button → Sleep (Suspend to RAM) by default.
+# PowerButtonAction: 0=DoNothing 1=Sleep 2=Hibernate 8=Shutdown 32=Lock
+# SleepMode: 1=SuspendToRam
+# Users may change the rest in System Settings → Energy Saving.
+[AC][SuspendAndShutdown]
+PowerButtonAction=1
+SleepMode=1
+
+[Battery][SuspendAndShutdown]
+PowerButtonAction=1
+SleepMode=1
+
+[LowBattery][SuspendAndShutdown]
+PowerButtonAction=1
+SleepMode=1

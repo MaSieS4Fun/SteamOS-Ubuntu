@@ -1,0 +1,7 @@
+# Native AYN Odin2 Gamepad (rsinput) — Xbox layout for Steam / SDL2 Game Mode.
+# Kernel rsinput already negates ABS_X/Y/RX/RY — do NOT add SDL '-' on lefty/righty
+# (double invert made up→down and down dead in Gamepad UI / Plasma).
+# Do not enable pad→mouse remappers (antimicro / input-remapper); use this as SDL2.
+0300b605202000000130000001000000822412289,AYN Odin2 Gamepad,platform:Linux,a:b0,b:b1,x:b3,y:b2,back:b6,start:b7,guide:b8,leftshoulder:b4,rightshoulder:b5,leftstick:b9,rightstick:b10,leftx:a0,lefty:a1,rightx:a3,righty:a4,lefttrigger:a2,righttrigger:a5,dpup:b11,dpleft:b13,dpdown:b12,dpright:b14,
+# Optional DualSense UHID name (if qcom-sdl-pad is installed later for motion).
+0300b6054c050000e60c000000810000,AYN Odin 2 Controller,a:b1,b:b2,x:b0,y:b3,back:b8,start:b9,guide:b12,leftshoulder:b4,rightshoulder:b5,leftstick:b10,rightstick:b11,lefttrigger:a2,righttrigger:a5,leftx:a0,lefty:a1,rightx:a3,righty:a4,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,platform:Linux,

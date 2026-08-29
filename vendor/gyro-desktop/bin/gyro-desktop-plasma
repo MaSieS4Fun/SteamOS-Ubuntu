@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Plasma / desktop: native AYN pad only (stop InputPlumber). DSU optional / always-on.
+set -euo pipefail
+
+log() { printf '==> [gyro-desktop-plasma] %s\n' "$*" >&2; }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+[[ "${EUID}" -eq 0 ]] || die "run as root"
+
+log "Stop InputPlumber — raw AYN gamepad for desktop"
+systemctl stop inputplumber.service 2>/dev/null || true
+
+DSU_BIN="$(dirname "$0")/gyro-fix-dsu"
+[[ -x "$DSU_BIN" ]] || DSU_BIN="/usr/bin/gyro-fix-dsu"
+st="$("$DSU_BIN" status 2>/dev/null || true)"
+wanted="$(printf '%s\n' "$st" | sed -n 's/^wanted=\([^ ]*\).*/\1/p')"
+always="$(printf '%s\n' "$st" | sed -n 's/.*always_on=\([^ ]*\).*/\1/p')"
+wanted="${wanted:-false}"
+always="${always:-false}"
+
+if [[ "$always" == "true" || "$wanted" == "true" ]]; then
+  log "DSU wanted/always-on — starting qcom-motion"
+  "$DSU_BIN" on || true
+else
+  log "DSU off — stopping qcom-motion"
+  "$DSU_BIN" off || true
+fi
+
+log "Desktop pad ready (AYN only; no Steam Deck virtual pad)"

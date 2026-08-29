@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ShadowBlip/InputPlumber/main/rootfs/usr/share/inputplumber/schema/composite_device_v1.json
+# Default image / desktop: gamepad only (Xbox-style via deck-uhid passthrough).
+# Gaming Mode enables IMU via gyro-desktop-gamescope / enable-inputplumber-gyro.sh
+# Optional DSU for emulators: GYRO-FIX app (does not need IMU in InputPlumber).
+version: 1
+kind: CompositeDevice
+name: AYN Layout
+
+matches:
+  - udev:
+      sys_path: /sys/firmware/devicetree/base
+      attributes:
+        - name: model
+          value: AYN Odin 2
+  - udev:
+      sys_path: /sys/firmware/devicetree/base
+      attributes:
+        - name: model
+          value: AYN Odin 2 Mini
+  - udev:
+      sys_path: /sys/firmware/devicetree/base
+      attributes:
+        - name: model
+          value: AYN Odin 2 Portal
+  - udev:
+      sys_path: /sys/firmware/devicetree/base
+      attributes:
+        - name: model
+          value: AYN Thor
+  - udev:
+      sys_path: /sys/firmware/devicetree/base
+      attributes:
+        - name: model
+          value: Retroid Pocket 6
+  - udev:
+      sys_path: /sys/firmware/devicetree/base
+      attributes:
+        - name: model
+          value: Retroid Pocket 6 TOP-DPAD
+
+single_source: false
+
+source_devices:
+  - group: gamepad
+    evdev:
+      phys_path: rsinput-gamepad/input0
+      handler: event*
+    capability_map_id: ayn_mcu
+    passthrough: true
+
+options:
+  auto_manage: true
+
+target_devices:
+  - deck-uhid
+  - keyboard

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=SteamOS Gaming Mode
+Comment=Gamescope + Steam Gamepad UI (Adreno)
+Exec=gamescope-session
+Type=Application
+DesktopNames=gamescope
+X-GDM-SessionRegisters=true

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Keep panel black/empty until gamescope takes DRM (no X11, no fbi, no Steam env changes).
+set +e
+
+MARKER="${PANEL_HOLD_MARKER:-/run/steamos-ubuntu/panel-hold.active}"
+
+silence_kernel() {
+  dmesg --console-off 2>/dev/null || dmesg -D 2>/dev/null || true
+  [[ -w /proc/sys/kernel/printk ]] && echo "1 4 1 1" >/proc/sys/kernel/printk 2>/dev/null || true
+}
+
+clear_tty() {
+  local tty
+  for tty in /dev/tty1 /dev/tty0; do
+    [[ -e "$tty" && -w "$tty" ]] || continue
+    printf '\033[?25l\033[3J\033[2J\033[H' >"$tty" 2>/dev/null || true
+  done
+}
+
+hold() {
+  mkdir -p /run/steamos-ubuntu 2>/dev/null || true
+  chmod 0775 /run/steamos-ubuntu 2>/dev/null || true
+  touch "$MARKER" 2>/dev/null || true
+  chmod 0666 "$MARKER" 2>/dev/null || true
+  silence_kernel
+  clear_tty
+  while [[ -f "$MARKER" ]]; do
+    clear_tty
+    sleep 0.2
+  done
+}
+
+release() {
+  rm -f "$MARKER" 2>/dev/null || true
+  clear_tty
+}
+
+case "${1:-}" in
+  hold|start) hold ;;
+  release|stop) release ;;
+  *)
+    echo "Usage: $0 hold|release" >&2
+    exit 2
+    ;;
+esac

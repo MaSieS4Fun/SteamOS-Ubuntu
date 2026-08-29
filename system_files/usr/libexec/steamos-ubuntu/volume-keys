@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""Map KEY_VOLUMEUP / KEY_VOLUMEDOWN / KEY_MUTE → wpctl (PipeWire).
+
+EVIOCGRAB volume-capable devices so Steam's stuck OSD does not own the rocker.
+Hold-to-repeat is handled with a background adjuster (kernel EV_KEY repeats
+alone are too bursty / block on wpctl and feel broken).
+"""
+from __future__ import annotations
+
+import array
+import fcntl
+import glob
+import os
+import select
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+EVENT_FMT = "llHHi"
+EVENT_SIZE = struct.calcsize(EVENT_FMT)
+EV_KEY = 0x01
+KEY_MUTE = 113
+KEY_VOLUMEDOWN = 114
+KEY_VOLUMEUP = 115
+EVIOCGRAB = 0x40044590
+
+STEP = os.environ.get("STEAMOS_VOLUME_STEP", "5%")
+LIMIT = os.environ.get("STEAMOS_VOLUME_LIMIT", "1.0")
+GRAB = os.environ.get("STEAMOS_VOLUME_GRAB", "1") not in ("0", "false", "no")
+# Delay before hold-repeat starts, then interval between steps while held.
+HOLD_DELAY = float(os.environ.get("STEAMOS_VOLUME_HOLD_DELAY", "0.28"))
+HOLD_INTERVAL = float(os.environ.get("STEAMOS_VOLUME_HOLD_INTERVAL", "0.07"))
+
+
+def log(msg: str) -> None:
+    print(f"[volume-keys] {msg}", flush=True)
+
+
+def wpctl(*args: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    xrd = env.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    env.setdefault("XDG_RUNTIME_DIR", xrd)
+    try:
+        return subprocess.run(
+            ["wpctl", *args],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=2,
+        )
+    except FileNotFoundError:
+        log("wpctl missing — install wireplumber")
+        return subprocess.CompletedProcess(["wpctl", *args], 127, "", "missing")
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(["wpctl", *args], 124, "", "timeout")
+
+
+def ensure_audio() -> None:
+    xrd = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    sock = os.path.join(xrd, "pipewire-0")
+    if os.path.exists(sock):
+        return
+    log("pipewire socket missing — starting stack")
+    try:
+        subprocess.run(
+            [
+                "systemctl",
+                "--user",
+                "start",
+                "pipewire.socket",
+                "pipewire-pulse.socket",
+                "wireplumber.service",
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    time.sleep(0.2)
+    if os.path.exists(sock):
+        return
+    for bin_name in ("pipewire", "wireplumber", "pipewire-pulse"):
+        try:
+            subprocess.Popen(
+                [bin_name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except FileNotFoundError:
+            pass
+    for _ in range(30):
+        if os.path.exists(sock):
+            return
+        time.sleep(0.1)
+
+
+def device_has_volume_keys(fd: int) -> bool:
+    buf = array.array("B", [0] * 96)
+    nr = 0x20 + EV_KEY
+    size = len(buf)
+    ioc = (2 << 30) | (ord("E") << 8) | nr | (size << 16)
+    try:
+        fcntl.ioctl(fd, ioc, buf, True)
+    except OSError:
+        return True
+
+    def bit(code: int) -> bool:
+        return bool(buf[code // 8] & (1 << (code % 8)))
+
+    return bit(KEY_VOLUMEUP) or bit(KEY_VOLUMEDOWN) or bit(KEY_MUTE)
+
+
+def open_volume_devices() -> list[tuple[str, int]]:
+    opened: list[tuple[str, int]] = []
+    for path in sorted(glob.glob("/dev/input/event*")):
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        except OSError:
+            continue
+        name = os.path.basename(path)
+        try:
+            sysname = f"/sys/class/input/{name}/device/name"
+            if os.path.isfile(sysname):
+                with open(sysname, "r", encoding="utf-8", errors="ignore") as f:
+                    dname = f.read().strip().lower()
+                if any(
+                    x in dname
+                    for x in ("accel", "gyro", "mag ", "magnet", "als", "proximity")
+                ):
+                    os.close(fd)
+                    continue
+        except OSError:
+            pass
+        if not device_has_volume_keys(fd):
+            os.close(fd)
+            continue
+        if GRAB:
+            try:
+                fcntl.ioctl(fd, EVIOCGRAB, 1)
+                log(f"grabbed {path}")
+            except OSError as e:
+                log(f"grab failed {path}: {e} — still watching")
+        opened.append((path, fd))
+    return opened
+
+
+class VolumeController:
+    """One-shot on press + smooth hold repeat (ignore kernel EV_KEY value=2 spam)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._held: int | None = None  # KEY_VOLUMEUP / KEY_VOLUMEDOWN
+        self._gen = 0
+        self._audio_ready = False
+
+    def _bump(self, code: int) -> None:
+        if not self._audio_ready:
+            ensure_audio()
+            self._audio_ready = True
+        if code == KEY_VOLUMEUP:
+            r = wpctl("set-volume", "-l", LIMIT, "@DEFAULT_AUDIO_SINK@", f"{STEP}+")
+        elif code == KEY_VOLUMEDOWN:
+            r = wpctl("set-volume", "-l", LIMIT, "@DEFAULT_AUDIO_SINK@", f"{STEP}-")
+        else:
+            return
+        if r.returncode != 0 and "timeout" not in (r.stderr or ""):
+            # Retry audio once if sink was missing
+            ensure_audio()
+            if code == KEY_VOLUMEUP:
+                wpctl("set-volume", "-l", LIMIT, "@DEFAULT_AUDIO_SINK@", f"{STEP}+")
+            else:
+                wpctl("set-volume", "-l", LIMIT, "@DEFAULT_AUDIO_SINK@", f"{STEP}-")
+
+    def _hold_loop(self, code: int, gen: int) -> None:
+        time.sleep(HOLD_DELAY)
+        while True:
+            with self._lock:
+                if self._gen != gen or self._held != code:
+                    return
+            self._bump(code)
+            time.sleep(HOLD_INTERVAL)
+
+    def press(self, code: int) -> None:
+        with self._lock:
+            self._gen += 1
+            gen = self._gen
+            self._held = code
+        self._bump(code)
+        threading.Thread(target=self._hold_loop, args=(code, gen), daemon=True).start()
+
+    def release(self, code: int) -> None:
+        with self._lock:
+            if self._held == code:
+                self._held = None
+                self._gen += 1
+
+    def mute_toggle(self) -> None:
+        if not self._audio_ready:
+            ensure_audio()
+            self._audio_ready = True
+        wpctl("set-mute", "@DEFAULT_AUDIO_SINK@", "toggle")
+
+
+def main() -> int:
+    ensure_audio()
+    if not glob.glob("/dev/input/event*"):
+        log("no /dev/input/event* yet — waiting")
+        for _ in range(50):
+            time.sleep(0.1)
+            if glob.glob("/dev/input/event*"):
+                break
+
+    devices = open_volume_devices()
+    if not devices:
+        log("no volume-capable input devices — exit")
+        return 0
+
+    log(
+        f"watching {len(devices)} device(s); step={STEP} hold_delay={HOLD_DELAY}s "
+        f"hold_interval={HOLD_INTERVAL}s grab={int(GRAB)}"
+    )
+    ctl = VolumeController()
+    fd_map = {fd: path for path, fd in devices}
+    fds = list(fd_map.keys())
+
+    while True:
+        try:
+            readable, _, _ = select.select(fds, [], [], 5.0)
+        except (InterruptedError, select.error):
+            continue
+        for fd in readable:
+            path = fd_map.get(fd, "?")
+            try:
+                data = os.read(fd, EVENT_SIZE * 64)
+            except BlockingIOError:
+                continue
+            except OSError as e:
+                log(f"lost {path}: {e}")
+                try:
+                    if GRAB:
+                        fcntl.ioctl(fd, EVIOCGRAB, 0)
+                except OSError:
+                    pass
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                fds = [x for x in fds if x != fd]
+                fd_map.pop(fd, None)
+                continue
+            for off in range(0, len(data) - EVENT_SIZE + 1, EVENT_SIZE):
+                _sec, _usec, etype, code, value = struct.unpack_from(
+                    EVENT_FMT, data, off
+                )
+                if etype != EV_KEY:
+                    continue
+                if code not in (KEY_VOLUMEUP, KEY_VOLUMEDOWN, KEY_MUTE):
+                    continue
+                # value: 0=release 1=press 2=repeat (ignore 2 — hold thread owns it)
+                if code == KEY_MUTE:
+                    if value == 1:
+                        ctl.mute_toggle()
+                    continue
+                if value == 1:
+                    ctl.press(code)
+                elif value == 0:
+                    ctl.release(code)
+
+        if not fds:
+            log("all devices gone — exit")
+            return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)

@@ -1,0 +1,133 @@
+.TH "IR\-KEYTABLE" "1" "Fri Oct 3 2014" "v4l-utils @MAN_PACKAGE_VERSION@" "User Commands"
+.SH NAME
+ir\-keytable \- a swiss\-knife tool to handle Remote Controllers.
+.SH SYNOPSIS
+.B ir\-keytable
+[\fIOPTION\fR]...
+.SH DESCRIPTION
+ir\-keytable is a tool that lists Remote Controller devices, loads
+rc keymaps, tests events, and adjusts other Remote Controller options.
+.PP
+Rather than loading a rc keymap, it is also possible to set protocol decoders
+and set rc scancode to keycode mappings directly.
+.PP
+Note: You need to have read permissions on /dev/input for most of the
+options to work.
+.SH OPTIONS
+.TP
+\fB\-a\fR, \fB\-\-auto\-load\fR=\fICFGFILE\fR
+Auto\-load keymaps, based on a configuration file. Only works with
+\fB\-\-sysdev\fR.
+.TP
+\fB\-c\fR, \fB\-\-clear\fR
+Clears the scancode to keycode mappings.
+.TP
+\fB\-D\fR, \fB\-\-delay\fR=\fIDELAY\fR
+Sets the delay before repeating a keystroke.
+.TP
+\fB\-k\fR, \fB\-\-set\-key\fR=\fISCANKEY\fR
+Set scancode to keycode mapping.
+.TP
+\fB\-p\fR, \fB\-\-protocol\fR=\fIPROTOCOL\fR
+Comma separated list of kernel protocols or BPF protocol to enable. All
+other protocols are disabled.
+.TP
+\fB\-e\fR, \fB\-\-parameter\fR=\fIPARAMETER\fR
+Comma separated list of parameters for the BPF protocol.
+.TP
+\fB\-P\fR, \fB\-\-period\fR\=\fIPERIOD\fR
+Sets the period to repeat a keystroke.
+.TP
+\fB\-r\fR, \fB\-\-read\fR
+Read and show the current scancode to keycode mapping.
+.TP
+\fB\-s\fR, \fB\-\-sysdev\fR=\fISYSDEV\fR
+rc device to control, defaults to \fIrc0\fR if not specified.
+.TP
+\fB\-t\fR, \fB\-\-test\fR
+test if the rc device is generating events
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+Enables debug messages.
+.TP
+\fB\-w\fR, \fB\-\-write\fR=\fIKEYMAP\fR
+Reads the protocols and scancode to keycode mapping from the \fIKEYMAP\fR file,
+and enables those on the rc device.
+.TP
+\fB\-?\fR, \fB\-\-help\fR
+Prints the help message
+.TP
+\fB\-\-usage\fR
+Give a short usage message
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+print the v4l2\-utils version
+.PP
+Mandatory or optional arguments to long options are also mandatory or optional
+for any corresponding short options. Options can be combined together.
+.SS The options arguments are:
+.IP \fISYSDEV\fR
+the rc device as found at /sys/class/rc
+.IP \fIKEYMAP\fR
+a toml keymap file with a list of protocols and scancodes to keycode mappings.
+The format is described in rc_keymap(5).
+.IP \fISCANKEY\fR
+a set of scancode1=keycode1,scancode2=keycode2.. value pairs
+.IP \fIPROTOCOL\fR
+Comma separated list of kernel protocols to be enabled (case insensitive).
+Supported kernel protocols are: \fBnec\fR, \fBrc\-5\fR, \fBrc\-6\fR, \fBjvc\fR,
+\fBsony\fR, \fBsanyo\fR, \fBrc\-5\-sz\fR, \fBsharp\fR, \fBmce\-kbd\fR,
+\fBxmp\fR, \fBimon\fR, \fBrc\-mm\fR, \fBother\fR, \fBall\fR. It can also be a BPF protocol,
+e.g. \fBmanchester\fR, \fBpulse_distance\fR, \fBpulse_length\fR.
+If it does not match any of these, it is taken to be the path of BPF decoder
+to be loaded.
+.IP \fIPARAMETERS\fR
+Comma separated list of parameters for the BPF protocol being loaded. They have the format of name=value, where value is an number.
+.IP \fIDELAY\fR
+Delay before repeating a keystroke
+.IP \fIPERIOD\fR
+Period to repeat a keystroke
+.IP \fICFGFILE\fR
+configuration file that associates a driver/keymap name with a keymap file
+.SH EXIT STATUS
+On success, it returns 0. Otherwise, it will return the error code.
+.SH EXAMPLES
+To list all connected Remote Controller devices:
+.br
+	\fBir\-keytable\fR
+.PP
+To clean the keycode mapping and use a newer one:
+.br
+	\fBir\-keytable \-c \-w /etc/rc_keymaps/nec_terratec_cinergy_xs.toml\fR
+.PP
+To append more codes to the existing table:
+.br
+	\fBir\-keytable \-w /etc/rc_keymaps/nec_terratec_cinergy_xs.toml\fR
+.PP
+To read the current scancode to keycode mapping on the second remote controller:
+.br
+	\fBir\-keytable \-s rc1 \-r\fR
+.PP
+To enable NEC protocol and load a BPF protocol, with a parameter for the BPF protocol:
+.br
+	\fBir\-keytable \-p nec,pulse_distance \-e pulse_header=9000
+.PP
+If you do not know what protocol a remote uses, it can be helpful to first
+try with all kernel decoders enabled. The decoded protocol and scancodes
+will be displayed in the output:
+.br
+	\fBir\-keytable \-c \-p all \-t\fR
+
+.SH BUGS
+Report bugs to \fBLinux Media Mailing List <linux-media@vger.kernel.org>\fR
+.SH COPYRIGHT
+Copyright (c) 2010\-2014 by Mauro Carvalho Chehab.
+.PP
+License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>.
+.br
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+.SH SEE ALSO
+The keymap format is described in rc_keymap(5).
+
+To transmit IR or receive raw IR, see ir\-ctl(1).

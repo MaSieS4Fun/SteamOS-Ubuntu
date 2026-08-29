@@ -1,0 +1,19 @@
+# Audio stack + SM8550 UCM prerequisites
+pipewire
+pipewire-pulse
+pipewire-alsa
+pipewire-audio
+pipewire-jack
+wireplumber
+libspa-0.2-bluetooth
+libspa-0.2-jack
+alsa-ucm-conf
+alsa-utils
+libasound2-plugins
+pavucontrol
+pulseaudio-utils
+libpulse0
+libpipewire-0.3-0
+libwireplumber-0.5-0
+rtkit
+# Board firmware comes from vendor/kernel + vendor/audio (not apt sof/linux-firmware)

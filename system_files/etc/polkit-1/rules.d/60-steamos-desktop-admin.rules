@@ -1,0 +1,15 @@
+/* Desktop elevation (Kate save / Dolphin admin:// / kio-admin).
+ * Plasma 6 / KF6 uses org.kde.ktexteditor6.*; KF5 used org.kde.ktexteditor.*.
+ * auth_admin → password dialog via polkit-kde agent (user in group sudo).
+ * Do NOT return YES here — that would skip the password prompt. */
+polkit.addRule(function (action, subject) {
+  if (subject.user !== "steam") {
+    return undefined;
+  }
+  if (action.id === "org.kde.ktexteditor6.katetextbuffer.savefile" ||
+      action.id === "org.kde.ktexteditor.katetextbuffer.savefile" ||
+      action.id === "org.kde.kio.admin.commands") {
+    return polkit.Result.AUTH_ADMIN;
+  }
+  return undefined;
+});

@@ -1,0 +1,17 @@
+[Unit]
+Description=Qualcomm Sensor Core FastRPC (AYN Thor/Odin 2)
+Documentation=file:/usr/share/doc/masi-motion/README.txt
+After=sound.target masi-qcom-qrtr.service
+Wants=masi-qcom-qrtr.service
+ConditionPathExists=/proc/device-tree/compatible
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+KillMode=process
+ExecStart=/usr/bin/masi-qcom-sensors start
+ExecStop=/usr/bin/masi-qcom-sensors stop
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

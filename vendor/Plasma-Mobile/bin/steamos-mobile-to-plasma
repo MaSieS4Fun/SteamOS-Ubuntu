@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Plasma Mobile → Plasma Desktop (logout mobile, greetd starts desktop).
+set +e
+
+END_SESSION=/usr/share/plasma-mobile-steamos/bin/steamos-plasma-end-session.sh
+LOG=/var/log/steamos-session.log
+SESSION_FILE=/var/lib/steamos-ubuntu/session
+HANDOFF=/var/lib/steamos-ubuntu/plasma-handoff
+
+log() {
+  printf 'mobile-to-plasma: %s\n' "$*"
+  printf 'mobile-to-plasma: %s\n' "$*" >>"$LOG" 2>/dev/null || true
+}
+
+[[ -x "$END_SESSION" ]] || { log "ERROR: missing end-session script"; exit 1; }
+
+notify-send -a "SteamOS" "Plasma Desktop" "Switching to desktop shell…" 2>/dev/null || true
+
+set_session() {
+  local dir=/var/lib/steamos-ubuntu
+  if [[ -w "$dir" || -w "${dir}/session" ]]; then
+    bash /usr/lib/steamos/steam-set-session "$1"
+  else
+    pkexec bash /usr/lib/steamos/steam-set-session "$1"
+  fi
+}
+
+read_session() { tr -d '[:space:]' <"$SESSION_FILE" 2>/dev/null || true; }
+
+log "requested was=$(read_session)"
+set_session plasma.desktop || exit 1
+[[ "$(read_session)" == "plasma" ]] || { log "ERROR: session not plasma"; exit 1; }
+
+touch "$HANDOFF" 2>/dev/null || pkexec touch "$HANDOFF" 2>/dev/null || true
+log "session → plasma, ending Plasma session"
+exec "$END_SESSION"

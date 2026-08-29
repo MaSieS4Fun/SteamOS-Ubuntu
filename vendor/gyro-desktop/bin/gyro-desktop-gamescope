@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Gaming Mode: deck-uhid + IMU + qcom-motion (Steam gyro). Ignores desktop DSU preference.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SHARE="${GYRO_DESKTOP_SHARE:-/usr/share/gyro-desktop}"
+IP_SRC="${ROOT}/../../system_files/etc/inputplumber"
+[[ -f "${IP_SRC}/optional/02-ayn-controller+imu.yaml" ]] || IP_SRC="${SHARE}/inputplumber"
+IMU_YAML="${IP_SRC}/optional/02-ayn-controller+imu.yaml"
+[[ -f "$IMU_YAML" ]] || IMU_YAML="/usr/share/gyro-desktop/inputplumber/optional/02-ayn-controller+imu.yaml"
+IMU_MAP="${IP_SRC}/capability_maps.d/imu_generic.yaml"
+[[ -f "$IMU_MAP" ]] || IMU_MAP="/usr/share/gyro-desktop/inputplumber/capability_maps.d/imu_generic.yaml"
+[[ -f "$IMU_MAP" ]] || IMU_MAP="/etc/inputplumber/capability_maps.d/imu_generic.yaml"
+
+log() { printf '==> [gyro-desktop-gamescope] %s\n' "$*" >&2; }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+[[ "${EUID}" -eq 0 ]] || die "run as root"
+
+log "Start motion stack for Steam IMU"
+systemctl start masi-qcom-qrtr.service 2>/dev/null || true
+systemctl start masi-qcom-sensors.service 2>/dev/null || true
+systemctl enable qcom-motion.service 2>/dev/null || true
+systemctl restart qcom-motion.service 2>/dev/null || systemctl start qcom-motion.service || true
+sleep 1
+
+if [[ -f "$IMU_YAML" ]]; then
+  log "Install gamepad+IMU composite → deck-uhid"
+  install -d /etc/inputplumber/devices.d /etc/inputplumber/capability_maps.d
+  if [[ -f "$IMU_MAP" ]]; then
+    install -m 0644 "$IMU_MAP" /etc/inputplumber/capability_maps.d/imu_generic.yaml
+  fi
+  install -m 0644 "$IMU_YAML" /etc/inputplumber/devices.d/02-ayn-controller.yaml
+  if [[ -d /usr/share/inputplumber/devices.d ]]; then
+    install -m 0644 "$IMU_YAML" /usr/share/inputplumber/devices.d/02-ayn-controller.yaml
+  fi
+fi
+
+systemctl enable inputplumber.service 2>/dev/null || true
+systemctl restart inputplumber.service 2>/dev/null || systemctl start inputplumber.service || true
+sleep 1
+log "Gaming Mode pad ready (deck-uhid + IMU)"

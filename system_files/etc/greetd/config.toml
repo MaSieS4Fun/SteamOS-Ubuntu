@@ -1,0 +1,14 @@
+[terminal]
+vt = "1"
+
+# initial_session runs once at boot (autologin steam → Gaming Mode).
+# When Steam finishes an OOBE/client update it exits and expects a session
+# restart (SDDM/user service brings gamescope back).
+# default_session MUST relaunch Gaming Mode — agreety here drops the user to TTY.
+[initial_session]
+command = "/usr/local/bin/steamos-greetd-session"
+user = "steam"
+
+[default_session]
+command = "/usr/local/bin/steamos-greetd-session"
+user = "steam"

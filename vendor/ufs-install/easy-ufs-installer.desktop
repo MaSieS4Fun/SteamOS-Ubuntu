@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Easy UFS Installer
+GenericName=Install Linux to internal UFS
+Comment=Repartition internal UFS and install Linux alongside Android (destructive)
+Exec=easy-ufs-installer
+Icon=easy-ufs-installer
+Terminal=false
+Categories=System;Settings;X-ARM-Manager;
+Keywords=ufs;internal;android;storage;install;dual-boot;
+StartupNotify=true

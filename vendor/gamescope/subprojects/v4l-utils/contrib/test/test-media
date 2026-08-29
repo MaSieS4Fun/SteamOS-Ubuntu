@@ -1,0 +1,981 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Copyright 2019 Cisco Systems, Inc. and/or its affiliates. All rights reserved.
+
+vidtv=0
+vivid=0
+vim2m=0
+vimc=0
+vicodec=0
+visl=0
+cec=0
+cecpwr=--skip-test-standby-resume
+kmemleak=0
+dmesg=0
+setup=0
+unload=0
+unbind_time=1
+reunbind_time=9
+rmmod_time=1
+modprobe_time=3
+kobj_rel=0
+v4l2_ctl=v4l2-ctl
+v4l2_compliance=v4l2-compliance
+compliance_args=
+
+if [ -f /proc/config.gz ]; then
+	if cat /proc/config.gz | gunzip |grep -q CONFIG_DEBUG_KOBJECT_RELEASE=y ; then
+		kobj_rel=1
+	fi
+elif [ -f .config ]; then
+	if grep -q CONFIG_DEBUG_KOBJECT_RELEASE=y .config ; then
+		kobj_rel=1
+	fi
+fi
+
+if [ -z "$1" ]; then
+	echo "usage: test-media [options] test-targets"
+	echo
+	echo Run as root.
+	echo
+	echo Options:
+	echo "-unload: unload any media modules before testing"
+	echo "-kmemleak: enable memory leak scan"
+	echo "-dmesg: run dmesg at the end"
+	echo "-E: exit on fail"
+	echo "-W: exit on warn"
+	echo "-32: use v4l2-ctl-32 and v4l2-compliance-32 to test the 32 bit compat layer"
+	echo "-32-time64: use v4l2-ctl-32-time64 and v4l2-compliance-32-time64 to test the 32 bit compat layer with 64 bit time_t"
+	echo "-setup: load and configure all the drivers, but do not run tests"
+	echo
+	echo Test Targets:
+	echo "vivid: test the vivid driver"
+	echo "vim2m: test the vim2m driver"
+	echo "vimc: test the vimc driver"
+	echo "vicodec: test the vicodec driver"
+	echo "vidtv: test the vidtv driver"
+	echo "visl: test the visl driver"
+	echo "cec: adds the vivid CEC compliance tests, except for the CEC standby/wakeup tests."
+	echo "cec-pwr: adds the vivid CEC compliance tests, including the CEC standby/wakeup tests."
+	echo "all: equals 'vivid vim2m vimc vicodec vidtv visl cec cec-pwr'"
+	echo "mc: equals 'vivid vim2m vimc vicodec vidtv visl'"
+	exit 0
+fi
+
+if [ `id -u` -ne 0 ]; then
+	echo "$0 must be run as root"
+	exit -1
+fi
+
+dmesg -n notice
+
+echo
+echo test-media $*
+echo
+echo
+
+
+while [ ! -z "$1" ]; do
+	case "$1" in
+	-unload)
+		unload=1
+		;;
+	-dmesg)
+		dmesg=1
+		;;
+	-E)
+		compliance_args="$compliance_args -E"
+		;;
+	-W)
+		compliance_args="$compliance_args -W"
+		;;
+	-setup)
+		setup=1
+		;;
+	-kmemleak)
+		if [ -f /sys/kernel/debug/kmemleak ]; then
+			kmemleak=1
+		else
+			echo /sys/kernel/debug/kmemleak not found, disable memleak testing
+		fi
+		;;
+	-32-time64)
+		v4l2_ctl=v4l2-ctl-32-time64
+		v4l2_compliance=v4l2-compliance-32-time64
+		if ! which $v4l2_ctl >/dev/null ; then
+			echo v4l2-ctl-32-time64 is not installed.
+			exit 0
+		fi
+		if ! which $v4l2_compliance >/dev/null ; then
+			echo v4l2-compliance-32-time64 is not installed.
+			exit 0
+		fi
+		if ! `$v4l2_compliance --version | grep -q "64-bit time_t"` ; then
+			echo $v4l2_compliance is not using 64 bit time_t:
+			$v4l2_compliance --version
+			exit 0
+		fi
+		;;
+	-32)
+		v4l2_ctl=v4l2-ctl-32
+		v4l2_compliance=v4l2-compliance-32
+		if ! which $v4l2_ctl >/dev/null ; then
+			echo v4l2-ctl-32 is not installed.
+			exit 0
+		fi
+		if ! which $v4l2_compliance >/dev/null ; then
+			echo v4l2-compliance-32 is not installed.
+			exit 0
+		fi
+		if ! `$v4l2_compliance --version | grep -q "32-bit time_t"` ; then
+			echo $$v4l2_compliance is not using 32 bit time_t:
+			$v4l2_compliance --version
+			exit 0
+		fi
+		;;
+	all)
+		vidtv=1
+		vivid=1
+		vim2m=1
+		vimc=1
+		vicodec=1
+		visl=1
+		cec=1
+		cecpwr=
+		;;
+	mc)
+		vivid=1
+		vim2m=1
+		vimc=1
+		vicodec=1
+		vidtv=1
+		visl=1
+		;;
+	vidtv)
+		vidtv=1
+		;;
+	vivid)
+		vivid=1
+		;;
+	vim2m)
+		vim2m=1
+		;;
+	vimc)
+		vimc=1
+		;;
+	vicodec)
+		vicodec=1
+		;;
+	visl)
+		visl=1
+		;;
+	cec)
+		cec=1
+		cecpwr=--skip-test-standby-resume
+		;;
+	cec-pwr)
+		cec=1
+		cecpwr=
+		;;
+	esac
+	shift
+done
+
+date
+uname -a
+echo
+$v4l2_ctl --version
+$v4l2_compliance --version
+echo
+
+if [ $vidtv -eq 1 ]; then
+	if [ ! -f /proc/config.gz ]; then
+		if cat /proc/config.gz | gunzip | grep -q CONFIG_MEDIA_CONTROLLER_DVB=y ; then
+			echo vidtv cannot be tested since CONFIG_MEDIA_CONTROLLER_DVB is not enabled
+			exit 0
+		fi
+	elif [ -f .config ]; then
+		if ! grep -q CONFIG_MEDIA_CONTROLLER_DVB=y .config ; then
+			echo vidtv cannot be tested since CONFIG_MEDIA_CONTROLLER_DVB is not enabled
+			exit 0
+		fi
+	fi
+fi
+
+if [ $kobj_rel -eq 1 ]; then
+	echo Detected CONFIG_DEBUG_KOBJECT_RELEASE=y
+	unbind_time=10
+	reunbind_time=14
+	rmmod_time=10
+	modprobe_time=10
+fi
+
+if [ $unload -eq 1 ]; then
+	test-media-unload.pl
+fi
+
+if [ $kmemleak -eq 1 ]; then
+	echo clear >/sys/kernel/debug/kmemleak
+fi
+
+dmesg -n info
+rmmod vivid 2&>/dev/null
+modprobe vivid n_devs=3 multiplanar=1,2,2 cache_hints=1,0,0 #allocators=0,1,1
+sleep $modprobe_time
+dmesg -n notice
+
+tmp=`mktemp`
+
+if ! $v4l2_ctl -z platform:vivid-002 -d vivid-002-vid-cap ; then
+	echo "FAIL: the vivid module failed to load" | tee -a $tmp
+	echo "Grand Total for vivid: Succeeded: 0, Failed: 1, Warnings: 0" | tee -a $tmp
+	echo "Final Summary: 1, Succeeded: 0, Failed: 1, Warnings: 0"
+	exit 0
+fi
+
+# Connect input HDMI 000-0 to output HDMI 000-0
+# This ensures an EDID is available at the output side, and that CEC
+# can be tested.
+$v4l2_ctl -z platform:vivid-000 -d vivid-000-vid-cap -c hdmi_000_0_is_connected_to=2
+$v4l2_ctl -z platform:vivid-000 -d vivid-000-vid-cap -i3 -v width=3840,height=2160,pixelformat=NV24
+$v4l2_ctl -z platform:vivid-000 -d vivid-000-vid-out -o1 -x width=3840,height=2160,pixelformat=NV24
+# Connect input HDMI 001-0 to output HDMI 001-0
+# This ensures an EDID is available at the output side.
+$v4l2_ctl -z platform:vivid-001 -d vivid-001-vid-cap -c hdmi_001_0_is_connected_to=3
+$v4l2_ctl -z platform:vivid-001 -d vivid-001-vid-cap -i3 -v width=3840,height=2160,pixelformat=NM16
+$v4l2_ctl -z platform:vivid-001 -d vivid-001-vid-out -o1 -x width=3840,height=2160,pixelformat=NM16
+$v4l2_ctl -z platform:vivid-002 -d vivid-002-vid-cap -i3 -v width=3840,height=2160,pixelformat=NV24
+$v4l2_ctl -z platform:vivid-002 -d vivid-002-vid-out -o1 -x width=3840,height=2160,pixelformat=NM16
+
+echo
+
+v4l2_compliance="$v4l2_compliance $compliance_args"
+
+if [ $vivid -eq 1 -a $setup -eq 0 ]; then
+	dmesg -n notice
+	echo
+	echo vivid compliance tests, contiguous planes | tee /dev/kmsg
+	echo
+	date
+	stdbuf -oL $v4l2_compliance -m platform:vivid-000 -z platform:vivid-002 -e vivid-002-vid-cap -P -s10 -a 2>&1 | tee -a $tmp
+	echo
+	echo vivid compliance tests, non-contiguous planes | tee /dev/kmsg
+	echo
+	date
+	stdbuf -oL $v4l2_compliance -m platform:vivid-001 -z platform:vivid-002 -e vivid-002-vid-out -P -s10 -a 2>&1 | tee -a $tmp
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+fi
+
+if [ $cec -eq 1 ]; then
+	dmesg -n notice
+	cec-ctl --version
+	cec-compliance --version
+	cec-follower --version
+	echo
+	if ! cec-ctl -D vivid -a vivid-000-vid-cap0 >/dev/null ; then
+		echo "FAIL: the vivid module had no cec support" | tee -a $tmp
+		echo "Grand Total for vivid cec: Succeeded: 0, Failed: 1, Warnings: 0" | tee -a $tmp
+		echo "Final Summary: 1, Succeeded: 0, Failed: 1, Warnings: 0"
+		exit 0
+	fi
+	cec-ctl -D vivid -a vivid-000-vid-cap0 --tv
+	sleep 1
+	cec-ctl -D vivid -a vivid-000-vid-out0 --playback
+	sleep 1
+fi
+
+if [ $cec -eq 1 -a $setup -eq 0 ]; then
+	echo
+	echo vivid cec compliance tests | tee /dev/kmsg
+	echo
+	trap 'kill $f0 $f1 2>/dev/null' INT
+	cec-follower -s -D vivid -a vivid-000-vid-cap0 2>&1 >/dev/null &
+	f0=$!
+	cec-follower -s -D vivid -a vivid-000-vid-out0 2>&1 >/dev/null &
+	f1=$!
+	date
+	stdbuf -oL cec-compliance $compliance_args -D vivid -a vivid-000-vid-cap0 -r4 -t10 $cecpwr 2>&1 | tee -a $tmp
+	sleep 5
+	date
+	stdbuf -oL cec-compliance $compliance_args -D vivid -a vivid-000-vid-out0 -r0 -t10 $cecpwr 2>&1 | tee -a $tmp
+	sleep 5
+	date
+	stdbuf -oL cec-compliance $compliance_args -D vivid -a vivid-000-vid-cap0 -A 2>&1 | tee -a $tmp
+	sleep 5
+	date
+	cec-ctl -D vivid -a vivid-000-vid-cap0 --tv
+	stdbuf -oL cec-compliance $compliance_args -D vivid -a vivid-000-vid-out0 -A 2>&1 | tee -a $tmp
+	cec-ctl -D vivid -a vivid-000-vid-out0 --playback
+	kill $f0
+	kill $f1
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	vivid=1
+fi
+
+if [ $vivid -eq 1 -a $setup -eq 0 ]; then
+	echo
+	echo unbind vivid | tee /dev/kmsg
+	echo
+	echo -n vivid.0 >/sys/bus/platform/drivers/vivid/unbind
+	sleep $unbind_time
+	echo
+	echo rebind vivid | tee /dev/kmsg
+	echo
+	echo -n vivid.0 >/sys/bus/platform/drivers/vivid/bind
+	sleep 1
+	echo
+
+	echo second unbind vivid | tee /dev/kmsg
+	echo
+	# Test that you can unbind while in a blocking VIDIOC_DQBUF
+	$v4l2_ctl -z platform:vivid-000 -d vivid-000-vid-cap -c percentage_of_dropped_buffers=100
+	$v4l2_ctl -z platform:vivid-000 -d vivid-000-vid-cap --stream-mmap &
+	sleep 1
+	echo
+	echo -n vivid.0 >/sys/bus/platform/drivers/vivid/unbind
+	sleep $unbind_time
+	echo
+	echo rebind vivid | tee /dev/kmsg
+	echo
+	echo -n vivid.0 >/sys/bus/platform/drivers/vivid/bind
+	sleep 1
+	echo
+
+	echo third unbind vivid | tee /dev/kmsg
+	echo
+	for i in `$v4l2_ctl -z platform:vivid-000 --list-devices` `cec-ctl -D vivid -a vivid-000-vid-cap0 -s --list-devices` `cec-ctl -D vivid -a vivid-000-vid-out0 -s --list-devices`; do
+		let "t = 1 + $RANDOM / 4096"
+		echo $i: sleep ${t}s
+		sleep $t <$i &
+	done
+	sleep 1
+	echo
+	echo -n vivid.0 >/sys/bus/platform/drivers/vivid/unbind
+	sleep $reunbind_time
+	echo
+	echo rmmod vivid | tee /dev/kmsg
+	echo
+	rmmod vivid
+	sleep $rmmod_time
+
+	if [ $kmemleak -eq 1 ]; then
+		echo
+		echo kmemleak results for vivid:
+		echo
+		echo scan >/sys/kernel/debug/kmemleak
+		cat /sys/kernel/debug/kmemleak
+		echo
+		echo end of kmemleak results
+		echo
+	fi
+
+	dmesg -n info
+	modprobe vivid n_devs=3 multiplanar=1,2,2 cache_hints=1,0,0 #allocators=0,1,1
+	sleep $modprobe_time
+	dmesg -n notice
+
+	$v4l2_ctl -z platform:vivid-002 -d vivid-002-vid-cap -i3 -v width=3840,height=2160,pixelformat=NV24
+	$v4l2_ctl -z platform:vivid-002 -d vivid-002-vid-out -o1 -x width=3840,height=2160,pixelformat=NM16
+
+	if [ $kmemleak -eq 1 ]; then
+		echo clear >/sys/kernel/debug/kmemleak
+	fi
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+fi
+
+if [ $vim2m -eq 1 ]; then
+	rmmod vim2m 2&>/dev/null
+	dmesg -n info
+	modprobe vim2m
+	sleep $modprobe_time
+	dmesg -n notice
+
+	if ! $v4l2_ctl -z platform:vim2m ; then
+		echo "FAIL: the vim2m module failed to load" | tee -a $tmp
+		echo "Grand Total for vim2m: Succeeded: 0, Failed: 1, Warnings: 0" | tee -a $tmp
+		echo "Final Summary: 1, Succeeded: 0, Failed: 1, Warnings: 0"
+		rmmod vivid
+		exit 0
+	fi
+fi
+
+if [ $vim2m -eq 1 -a $setup -eq 0 ]; then
+	echo
+	echo vim2m compliance tests | tee /dev/kmsg
+	echo
+	date
+	stdbuf -oL $v4l2_compliance -m platform:vim2m -z platform:vivid-002 -e vivid-002-vid-cap -s10 -P -a 2>&1 | tee -a $tmp
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo unbind vim2m | tee /dev/kmsg
+	echo
+	echo -n vim2m.0 >/sys/bus/platform/drivers/vim2m/unbind
+	sleep $unbind_time
+	echo
+	echo rebind vim2m | tee /dev/kmsg
+	echo
+	echo -n vim2m.0 >/sys/bus/platform/drivers/vim2m/bind
+	sleep 1
+	echo
+	echo second unbind vim2m | tee /dev/kmsg
+	echo
+	for i in `$v4l2_ctl -z platform:vim2m --list-devices`; do
+		let "t = 1 + $RANDOM / 4096"
+		echo $i: sleep ${t}s
+		sleep $t <$i &
+	done
+	sleep 1
+	echo
+	echo -n vim2m.0 >/sys/bus/platform/drivers/vim2m/unbind
+	sleep $reunbind_time
+	echo
+	echo rmmod vim2m | tee /dev/kmsg
+	echo
+	rmmod vim2m
+	sleep $rmmod_time
+	if [ $kmemleak -eq 1 ]; then
+		echo
+		echo kmemleak results for vim2m:
+		echo
+		echo scan >/sys/kernel/debug/kmemleak
+		cat /sys/kernel/debug/kmemleak
+		echo
+		echo end of kmemleak results
+		echo clear >/sys/kernel/debug/kmemleak
+	fi
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+fi
+
+if [ $vimc -eq 1 ]; then
+	rmmod vimc 2&>/dev/null
+	dmesg -n info
+	modprobe vimc
+	sleep $modprobe_time
+	dmesg -n notice
+
+	if ! $v4l2_ctl -z platform:vimc -d "Sensor A" ; then
+		echo "FAIL: the vimc module failed to load" | tee -a $tmp
+		echo "Grand Total for vimc: Succeeded: 0, Failed: 1, Warnings: 0" | tee -a $tmp
+		echo "Final Summary: 1, Succeeded: 0, Failed: 1, Warnings: 0"
+		rmmod vivid
+		exit 0
+	fi
+
+	media-ctl -d platform:vimc -V '"Sensor A":0[fmt:SBGGR8_1X8/640x480]'
+	media-ctl -d platform:vimc -V '"Debayer A":0[fmt:SBGGR8_1X8/640x480]'
+	media-ctl -d platform:vimc -V '"Sensor B":0[fmt:SBGGR8_1X8/640x480]'
+	media-ctl -d platform:vimc -V '"Debayer B":0[fmt:SBGGR8_1X8/640x480]'
+	media-ctl -d platform:vimc -V '"Scaler":1[fmt:RGB888_1X24/1920x1440]'
+	$v4l2_ctl -z platform:vimc -d "RGB/YUV Capture" -v width=1920,height=1440
+	$v4l2_ctl -z platform:vimc -d "Raw Capture 0" -v pixelformat=BA81
+	$v4l2_ctl -z platform:vimc -d "Raw Capture 1" -v pixelformat=BA81
+fi
+
+if [ $vimc -eq 1 -a $setup -eq 0 ]; then
+	dmesg -n notice
+	echo
+	echo vimc compliance tests | tee /dev/kmsg
+	echo
+	date
+	stdbuf -oL $v4l2_compliance -m platform:vimc -z platform:vivid-002 -e vivid-002-vid-cap -s10 -P -a 2>&1 | tee -a $tmp
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo unbind vimc | tee /dev/kmsg
+	echo
+	echo -n vimc.0 >/sys/bus/platform/drivers/vimc/unbind
+	sleep $unbind_time
+	echo
+	echo rebind vimc | tee /dev/kmsg
+	echo
+	echo -n vimc.0 >/sys/bus/platform/drivers/vimc/bind
+	sleep 1
+	media-ctl -d platform:vimc -V '"Sensor A":0[fmt:SBGGR8_1X8/640x480]'
+	media-ctl -d platform:vimc -V '"Debayer A":0[fmt:SBGGR8_1X8/640x480]'
+	media-ctl -d platform:vimc -V '"Sensor B":0[fmt:SBGGR8_1X8/640x480]'
+	media-ctl -d platform:vimc -V '"Debayer B":0[fmt:SBGGR8_1X8/640x480]'
+	media-ctl -d platform:vimc -V '"Scaler":1[fmt:RGB888_1X24/1920x1440]'
+	$v4l2_ctl -z platform:vimc -d "RGB/YUV Capture" -v width=1920,height=1440
+	$v4l2_ctl -z platform:vimc -d "Raw Capture 0" -v pixelformat=BA81
+	$v4l2_ctl -z platform:vimc -d "Raw Capture 1" -v pixelformat=BA81
+	echo
+	echo second unbind vimc | tee /dev/kmsg
+	echo
+	# Max sleep time is 6 + 8 = 14s
+	for i in `$v4l2_ctl -z platform:vimc --list-devices`; do
+		let "t = 6 + $RANDOM / 4096"
+		echo $i: sleep ${t}s
+		sleep $t <$i &
+	done
+	$v4l2_ctl -z platform:vimc -d "Raw Capture 0" --stream-mmap --sleep 5 &
+	sleep 1
+	echo -n vimc.0 >/sys/bus/platform/drivers/vimc/unbind
+	sleep 14
+	echo
+	echo rmmod vimc | tee /dev/kmsg
+	echo
+	rmmod vimc
+	sleep $rmmod_time
+	if [ $kmemleak -eq 1 ]; then
+		echo
+		echo kmemleak results for vimc:
+		echo
+		echo scan >/sys/kernel/debug/kmemleak
+		cat /sys/kernel/debug/kmemleak
+		echo
+		echo end of kmemleak results
+		echo clear >/sys/kernel/debug/kmemleak
+		echo
+		echo
+		echo
+		echo
+		echo
+		echo
+		echo
+		echo
+	fi
+fi
+
+if [ $vicodec -eq 1 ]; then
+	if [ $setup -eq 0 ]; then
+		tmpdir=`mktemp -d`
+	else
+		tmpdir=/tmp/vicodec-test
+		rm -rf $tmpdir
+		mkdir $tmpdir
+	fi
+
+	rmmod vicodec 2&>/dev/null
+	dmesg -n info
+	modprobe vicodec
+	sleep $modprobe_time
+	dmesg -n notice
+
+	if ! $v4l2_ctl -z platform:vicodec ; then
+		echo "FAIL: the vicodec module failed to load" | tee -a $tmp
+		echo "Grand Total for vicodec: Succeeded: 0, Failed: 1, Warnings: 0" | tee -a $tmp
+		echo "Final Summary: 1, Succeeded: 0, Failed: 1, Warnings: 0"
+		rmmod vivid
+		exit 0
+	fi
+
+	echo
+	echo vicodec create test files in $tmpdir | tee /dev/kmsg
+	echo
+
+	encful_opts='-z platform:vicodec -d stateful-encoder-source --stream-mmap --stream-out-mmap --stream-out-hor-speed=1'
+	$v4l2_ctl $encful_opts --stream-count=24 --stream-to-hdr=$tmpdir/comp.hdr.yu12.1280.24
+	$v4l2_ctl $encful_opts --stream-count=24 --stream-to=$tmpdir/comp.yu12.1280.24
+	$v4l2_ctl $encful_opts --stream-count=1 --stream-to-hdr=$tmpdir/comp.hdr.yu12.1280.1
+	$v4l2_ctl $encful_opts --stream-count=1 --stream-to=$tmpdir/comp.yu12.1280.1
+	$v4l2_ctl $encful_opts --stream-count=2 --stream-to-hdr=$tmpdir/comp.hdr.yu12.1280.2
+	$v4l2_ctl $encful_opts --stream-count=2 --stream-to=$tmpdir/comp.yu12.1280.2
+	$v4l2_ctl $encful_opts -x width=1920,height=1080 --set-selection-output target=crop,height=1080 --stream-count=24 --stream-to-hdr=$tmpdir/comp.hdr.yu12.1920.24
+	$v4l2_ctl $encful_opts -x width=1920,height=1080 --set-selection-output target=crop,height=1080 --stream-count=24 --stream-to=$tmpdir/comp.yu12.1920.24
+	$v4l2_ctl $encful_opts -x width=1920,height=1080 --set-selection-output target=crop,height=1080 --stream-count=1 --stream-to-hdr=$tmpdir/comp.hdr.yu12.1920.1
+	$v4l2_ctl $encful_opts -x width=1920,height=1080 --set-selection-output target=crop,height=1080 --stream-count=1 --stream-to=$tmpdir/comp.yu12.1920.1
+	$v4l2_ctl $encful_opts -x width=1920,height=1080 --set-selection-output target=crop,height=1080 --stream-count=2 --stream-to-hdr=$tmpdir/comp.hdr.yu12.1920.2
+	$v4l2_ctl $encful_opts -x width=1920,height=1080 --set-selection-output target=crop,height=1080 --stream-count=2 --stream-to=$tmpdir/comp.yu12.1920.2
+
+	cat $tmpdir/comp.hdr.yu12.1280.1 $tmpdir/comp.hdr.yu12.1920.1 >$tmpdir/comp.hdr.yu12.mix.2
+	cat $tmpdir/comp.yu12.1280.1 $tmpdir/comp.yu12.1920.1 >$tmpdir/comp.yu12.mix.2
+	cat $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 $tmpdir/comp.hdr.yu12.mix.2 >$tmpdir/comp.hdr.yu12.mix.2.12
+	cat $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 $tmpdir/comp.yu12.mix.2 >$tmpdir/comp.yu12.mix.2.12
+	cat $tmpdir/comp.hdr.yu12.1280.2 $tmpdir/comp.hdr.yu12.1920.2 >$tmpdir/comp.hdr.yu12.mix.4
+	cat $tmpdir/comp.yu12.1280.2 $tmpdir/comp.yu12.1920.2 >$tmpdir/comp.yu12.mix.4
+	cat $tmpdir/comp.hdr.yu12.mix.4 $tmpdir/comp.hdr.yu12.mix.4 $tmpdir/comp.hdr.yu12.mix.4 $tmpdir/comp.hdr.yu12.mix.4 $tmpdir/comp.hdr.yu12.mix.4 $tmpdir/comp.hdr.yu12.mix.4 >$tmpdir/comp.hdr.yu12.mix.4.6
+	cat $tmpdir/comp.yu12.mix.4 $tmpdir/comp.yu12.mix.4 $tmpdir/comp.yu12.mix.4 $tmpdir/comp.yu12.mix.4 $tmpdir/comp.yu12.mix.4 $tmpdir/comp.yu12.mix.4 >$tmpdir/comp.yu12.mix.4.6
+fi
+
+if [ $vicodec -eq 1 -a $setup -eq 0 ]; then
+	echo
+	echo vicodec media controller compliance tests | tee /dev/kmsg
+	echo
+	date
+	stdbuf -oL $v4l2_compliance -m platform:vicodec 2>&1 | tee -a $tmp
+
+	echo
+	echo vicodec encoder compliance tests | tee /dev/kmsg
+	echo
+	date
+	stdbuf -oL $v4l2_compliance -z platform:vicodec -d stateful-encoder-source -z platform:vivid-002 -e vivid-002-vid-cap -s10 -P -a 2>&1 | tee -a $tmp
+
+	echo
+	echo vicodec decoder compliance tests | tee /dev/kmsg
+	echo
+	date
+	decful_opts='-z platform:vicodec -d stateful-decoder-source -z platform:vivid-002 -e vivid-002-vid-cap'
+	stdbuf -oL $v4l2_compliance $decful_opts --stream-from-hdr=$tmpdir/comp.hdr.yu12.1280.24 -s24 -P -a 2>&1 | tee -a $tmp
+	stdbuf -oL $v4l2_compliance $decful_opts --stream-from $tmpdir/comp.yu12.1280.24 -s24 -P -a 2>&1 | tee -a $tmp
+	stdbuf -oL $v4l2_compliance $decful_opts --stream-from-hdr $tmpdir/comp.hdr.yu12.mix.4.6 -s24 -P -a 2>&1 | tee -a $tmp
+	stdbuf -oL $v4l2_compliance $decful_opts --stream-from $tmpdir/comp.yu12.mix.4.6 -s24 -P -a 2>&1 | tee -a $tmp
+	stdbuf -oL $v4l2_compliance $decful_opts --stream-from-hdr $tmpdir/comp.hdr.yu12.mix.2.12 -s24 -P -a 2>&1 | tee -a $tmp
+	stdbuf -oL $v4l2_compliance $decful_opts --stream-from $tmpdir/comp.yu12.mix.2.12 -s24 -P -a 2>&1 | tee -a $tmp
+
+	decful_opts='-z platform:vicodec -d stateful-decoder-source --stream-mmap --stream-out-mmap'
+	decless_opts='-z platform:vicodec -d stateless-decoder-source --stream-mmap --stream-out-mmap'
+	vicodec_tests=0
+	vicodec_ok=0
+	vicodec_fail=0
+	echo
+	echo stateful decode | tee /dev/kmsg
+	echo
+	date
+	$v4l2_ctl $decful_opts --stream-from-hdr=$tmpdir/comp.hdr.yu12.1280.24 --stream-to=$tmpdir/raw.yu12.1280.24
+	echo
+	echo stateless decode | tee /dev/kmsg
+	echo
+	date
+	$v4l2_ctl $decless_opts --stream-from-hdr=$tmpdir/comp.hdr.yu12.1280.24 --stream-to=$tmpdir/raw.yu12.1280.24.stateless
+	vicodec_tests=$((vicodec_tests+1))
+	if cmp $tmpdir/raw.yu12.1280.24 $tmpdir/raw.yu12.1280.24.stateless ; then
+		echo "OK: stateless decode" | tee -a $tmp
+		vicodec_ok=$((vicodec_ok+1))
+	else
+		echo "FAIL: stateless decode: unexpected output" | tee -a $tmp
+		vicodec_fail=$((vicodec_fail+1))
+	fi
+
+	echo
+	echo stateful decode with dynamic resolution changes for every frame | tee /dev/kmsg
+	echo
+	date
+	$v4l2_ctl $decful_opts --stream-from-hdr=$tmpdir/comp.hdr.yu12.mix.2.12 --stream-to=$tmpdir/raw.yu12.mix.2.12
+	# v4l2-ctl does not yet reallocate buffers if they are too small for the new format
+	$v4l2_ctl $decless_opts -v width=1920,height=1088 --stream-from-hdr=$tmpdir/comp.hdr.yu12.mix.2.12 --stream-to=$tmpdir/raw.yu12.mix.2.12.stateless
+	vicodec_tests=$((vicodec_tests+1))
+	if cmp $tmpdir/raw.yu12.mix.2.12 $tmpdir/raw.yu12.mix.2.12.stateless ; then
+		echo "OK: stateful decode with dynamic resolution changes for every frame" | tee -a $tmp
+		vicodec_ok=$((vicodec_ok+1))
+	else
+		echo "FAIL: stateful decode with dynamic resolution changes for every frame: unexpected output" | tee -a $tmp
+		vicodec_fail=$((vicodec_fail+1))
+	fi
+
+	echo
+	echo stateful decode with dynamic resolution changes for every other frame | tee /dev/kmsg
+	echo
+	date
+	$v4l2_ctl $decful_opts --stream-from-hdr=$tmpdir/comp.hdr.yu12.mix.4.6 --stream-to=$tmpdir/raw.yu12.mix.4.6
+	# v4l2-ctl does not yet reallocate buffers if they are too small for the new format
+	$v4l2_ctl $decless_opts -v width=1920,height=1088 --stream-from-hdr=$tmpdir/comp.hdr.yu12.mix.4.6 --stream-to=$tmpdir/raw.yu12.mix.4.6.stateless
+	vicodec_tests=$((vicodec_tests+1))
+	if cmp $tmpdir/raw.yu12.mix.4.6 $tmpdir/raw.yu12.mix.4.6.stateless ; then
+		echo "OK: stateful decode with dynamic resolution changes for every other frame" | tee -a $tmp
+		vicodec_ok=$((vicodec_ok+1))
+	else
+		echo "FAIL: stateful decode with dynamic resolution changes for every other frame: unexpected output" | tee -a $tmp
+		vicodec_fail=$((vicodec_fail+1))
+	fi
+	echo Total for vicodec cmp tests: $vicodec_tests, Succeeded: $vicodec_ok, Failed: $vicodec_fail, Warnings: 0 | tee -a $tmp
+
+	rm -rf $tmpdir
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo unbind vicodec | tee /dev/kmsg
+	echo
+	echo -n vicodec.0 >/sys/bus/platform/drivers/vicodec/unbind
+	sleep $unbind_time
+	echo
+	echo rebind vicodec | tee /dev/kmsg
+	echo
+	echo -n vicodec.0 >/sys/bus/platform/drivers/vicodec/bind
+	sleep 1
+	echo
+	echo second unbind vicodec | tee /dev/kmsg
+	echo
+	for i in `$v4l2_ctl -z platform:vicodec --list-devices`; do
+		let "t = 1 + $RANDOM / 4096"
+		echo $i: sleep ${t}s
+		sleep $t <$i &
+	done
+	sleep 1
+	echo
+	echo -n vicodec.0 >/sys/bus/platform/drivers/vicodec/unbind
+	sleep $reunbind_time
+	echo
+	echo rmmod vicodec | tee /dev/kmsg
+	echo
+	rmmod vicodec
+	sleep $rmmod_time
+	if [ $kmemleak -eq 1 ]; then
+		echo
+		echo kmemleak results for vicodec:
+		echo
+		echo scan >/sys/kernel/debug/kmemleak
+		cat /sys/kernel/debug/kmemleak
+		echo
+		echo end of kmemleak results
+		echo clear >/sys/kernel/debug/kmemleak
+	fi
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+fi
+
+
+if [ $visl -eq 1 ]; then
+	echo
+	echo loading visl module | tee /dev/kmsg
+	dmesg -n info
+	modprobe visl
+	sleep $modprobe_time
+	dmesg -n notice
+
+	if ! $v4l2_ctl -z platform:visl ; then
+		echo "FAIL: the visl module failed to load" | tee -a $tmp
+		echo "Grand Total for visl: Succeeded: 0, Failed: 1, Warnings: 0" | tee -a $tmp
+		echo "Final Summary: 1, Succeeded: 0, Failed: 1, Warnings: 0"
+		rmmod vivid
+		exit 0
+	fi
+fi
+
+if [ $visl -eq 1 -a $setup -eq 0 ]; then
+	echo
+	echo visl compliance tests | tee /dev/kmsg
+	echo
+	date
+	stdbuf -oL $v4l2_compliance -m platform:visl -P -s10 -a 2>&1 | tee -a $tmp
+	echo
+	echo unbind visl | tee /dev/kmsg
+	echo
+	echo -n visl.0 >/sys/bus/platform/drivers/visl/unbind
+	sleep $unbind_time
+	echo
+	echo rebind visl | tee /dev/kmsg
+	echo
+	echo -n visl.0 >/sys/bus/platform/drivers/visl/bind
+	sleep 1
+	echo
+	echo second unbind visl | tee /dev/kmsg
+	echo
+	for i in `$v4l2_ctl -z platform:visl --list-devices`; do
+		let "t = 1 + $RANDOM / 4096"
+		echo $i: sleep ${t}s
+		sleep $t <$i &
+	done
+	sleep 1
+	echo
+	echo -n visl.0 >/sys/bus/platform/drivers/visl/unbind
+	sleep $reunbind_time
+	echo
+	echo rmmod visl | tee /dev/kmsg
+	echo
+	rmmod visl
+	sleep $rmmod_time
+
+	if [ $kmemleak -eq 1 ]; then
+		echo
+		echo kmemleak results for visl:
+		echo
+		echo scan >/sys/kernel/debug/kmemleak
+		cat /sys/kernel/debug/kmemleak
+		echo
+		echo end of kmemleak results
+		echo
+	fi
+
+	dmesg -n info
+	modprobe visl
+	sleep $modprobe_time
+	dmesg -n notice
+
+	$v4l2_ctl -z platform:visl --all
+
+	if [ $kmemleak -eq 1 ]; then
+		echo clear >/sys/kernel/debug/kmemleak
+	fi
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+fi
+
+
+if [ $vidtv -eq 1 ]; then
+	rmmod dvb_vidtv_bridge dvb_vidtv_tuner dvb_vidtv_demod 2&>/dev/null
+	dmesg -n info
+	modprobe vidtv
+	sleep $modprobe_time
+	dmesg -n notice
+
+	if ! media-ctl -d platform:vidtv ; then
+		echo "FAIL: the vidtv module failed to load" | tee -a $tmp
+		echo "Grand Total for vidtv: Succeeded: 0, Failed: 1, Warnings: 0" | tee -a $tmp
+		echo "Final Summary: 1, Succeeded: 0, Failed: 1, Warnings: 0"
+		rmmod dvb_vidtv_bridge dvb_vidtv_tuner dvb_vidtv_demod 2&>/dev/null
+		exit 0
+	fi
+fi
+
+if [ $vidtv -eq 1 -a $setup -eq 0 ]; then
+	echo
+	echo vidtv media controller compliance tests | tee /dev/kmsg
+	echo
+	date
+	stdbuf -oL $v4l2_compliance -m platform:vidtv 2>&1 | tee -a $tmp
+
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo unbind vidtv
+	echo
+	echo -n vidtv.0 >/sys/bus/platform/drivers/vidtv/unbind
+	sleep $unbind_time
+	echo
+	echo rebind vidtv
+	echo
+	echo -n vidtv.0 >/sys/bus/platform/drivers/vidtv/bind
+	sleep 1
+	echo
+	echo second unbind vidtv
+	echo
+	sleep 1
+	echo
+	echo -n vidtv.0 >/sys/bus/platform/drivers/vidtv/unbind
+	sleep $reunbind_time
+	echo
+	echo rmmod dvb_vidtv_bridge dvb_vidtv_tuner dvb_vidtv_demod
+	echo
+	rmmod dvb_vidtv_bridge dvb_vidtv_tuner dvb_vidtv_demod
+	sleep $rmmod_time
+	if [ $kmemleak -eq 1 ]; then
+		echo
+		echo kmemleak results for vidtv:
+		echo
+		echo scan >/sys/kernel/debug/kmemleak
+		cat /sys/kernel/debug/kmemleak
+		echo
+		echo end of kmemleak results
+		echo clear >/sys/kernel/debug/kmemleak
+	fi
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+	echo
+
+fi
+
+if [ $setup -eq 0 ]; then
+	date
+	echo
+	echo unbind vivid | tee /dev/kmsg
+	echo
+	echo -n vivid.0 >/sys/bus/platform/drivers/vivid/unbind
+	sleep $unbind_time
+	echo
+	echo rmmod vivid | tee /dev/kmsg
+	echo
+	rmmod vivid
+	sleep $rmmod_time
+fi
+
+if [ $setup -eq 0 ]; then
+	date
+	echo
+	echo Summary:
+	echo
+
+	grep 'Total' $tmp | perl -e '
+	while (<>) {
+		if (/Total/) {
+			print;
+			$added_nl = /^Grand/ || /\/dev\/cec/;
+			printf("\n") if $added_nl;
+		}
+		next unless /^Total/;
+		($succeeded, $failed, $warnings) = /Succeeded: (\d+), Failed: (\d+), Warnings: (\d+)/;
+		$tot_succeeded += $succeeded;
+		$tot_failed += $failed;
+		$tot_warnings += $warnings;
+	}
+
+	printf("\n") unless $added_nl;
+	printf("Final Summary: %d, Succeeded: %d, Failed: %d, Warnings: %d\n",
+		$tot_succeeded + $tot_failed, $tot_succeeded, $tot_failed, $tot_warnings);
+	'
+
+	date
+	rm -f $tmp
+
+	if [ $dmesg -eq 1 ]; then
+		echo
+		echo -----------------------------------------------------------
+		echo
+		dmesg
+	fi
+fi
+
+dmesg -n info
+date

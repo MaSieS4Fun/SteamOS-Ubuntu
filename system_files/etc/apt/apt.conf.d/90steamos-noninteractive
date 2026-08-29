@@ -1,0 +1,7 @@
+# Image bake / chroot: never prompt on conffile conflicts (e.g. greetd config.toml).
+# Keep our system_files overlays (confold); install new defaults only when absent (confdef).
+Dpkg::Options {
+    "--force-confdef";
+    "--force-confold";
+};
+APT::Get::Assume-Yes "true";

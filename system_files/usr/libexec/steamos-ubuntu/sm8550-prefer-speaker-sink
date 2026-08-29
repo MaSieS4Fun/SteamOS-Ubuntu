@@ -1,0 +1,340 @@
+#!/usr/bin/env bash
+# SM8550 profile helper — matches demo video:
+#   HiFi (DisplayPort, Speaker)  — HDMI/DP audio
+#   Pro Audio                    — Speakers (Pro) + headphones (Pro 1) — both expected
+#   Off
+#
+# No HiFi (Headphones, Speaker). UCM: Speaker+DisplayPort, JackHWMute Speaker on DP.
+# On DP plug → HiFi DP; on DP unplug → Pro Audio + restore speaker mixers.
+#
+#   --once / no args: apply once and exit
+#   --watch: re-apply when HDMI/DP plug state flips
+set +e
+LOG="${XDG_RUNTIME_DIR:-/tmp}/sm8550-prefer-speaker-sink.log"
+exec >>"$LOG" 2>&1
+echo "===== $(date -Iseconds) uid=$(id -u) args=$* ====="
+
+POLL_SEC=1
+MODE=once
+case "${1:-}" in
+  --watch|-w) MODE=watch ;;
+  --once|"") MODE=once ;;
+  -h|--help)
+    echo "Usage: $0 [--once|--watch]" >&2
+    exit 0
+    ;;
+  *)
+    echo "unknown arg: $1 (use --once or --watch)" >&2
+    MODE=once
+    ;;
+esac
+
+CARD=""
+LAST_DP=""
+
+# Short ops vs slow "list cards" (timeout 3 was returning empty → "no HiFi profile")
+pactl_cmd() { timeout 8 pactl "$@" 2>/dev/null; }
+pactl_list_cards() { timeout 20 pactl list cards 2>/dev/null; }
+wpctl_cmd() { timeout 5 wpctl "$@" 2>/dev/null; }
+log() { echo "[$(date -Iseconds)] $*"; }
+
+wait_ready() {
+  local i
+  for i in $(seq 1 120); do
+    if command -v pactl >/dev/null 2>&1; then
+      if pactl_cmd list short cards 2>/dev/null | grep -qiE 'platform-sound|alsa_card'; then
+        if pactl_cmd list short sinks 2>/dev/null | grep -q .; then
+          return 0
+        fi
+      fi
+    fi
+    sleep 0.5
+  done
+  return 1
+}
+
+resolve_card() {
+  CARD=$(pactl_cmd list short cards 2>/dev/null | awk 'BEGIN{IGNORECASE=1}
+    /platform-sound/ {print $2; exit}
+    /alsa_card/ {print $2; exit}
+  ')
+  if [[ -z "$CARD" ]]; then
+    CARD=$(pactl_cmd list short cards 2>/dev/null | awk 'NR==1{print $2; exit}')
+  fi
+  [[ -n "$CARD" ]]
+}
+
+jack_from_amixer() {
+  local name="$1" block
+  block=$(amixer -c 0 contents 2>/dev/null | awk -v n="$name" '
+    BEGIN{IGNORECASE=1}
+    $0 ~ "name=.*"n { buf=$0; grab=1; next }
+    grab {
+      buf=buf "\n" $0
+      if ($0 ~ /values=/) { print buf; exit }
+      if ($0 ~ /^numid=/) { exit }
+    }
+  ')
+  echo "$block" | grep -qi 'values=on' && { echo on; return 0; }
+  echo "$block" | grep -qi 'values=off' && { echo off; return 0; }
+  echo unknown
+  return 1
+}
+
+dp_from_pactl() {
+  local info
+  info=$(pactl_list_cards)
+  if echo "$info" | grep -qiE 'DisplayPort.*not available|availability group: DP0, not available'; then
+    echo off; return 0
+  fi
+  if echo "$info" | grep -qiE 'DisplayPort.*available|availability group: DP0, available'; then
+    echo on; return 0
+  fi
+  echo unknown; return 1
+}
+
+dp_from_drm() {
+  local f st any=0
+  for f in /sys/class/drm/card*-DP-*/status /sys/class/drm/card*-HDMI-A-*/status; do
+    [[ -r "$f" ]] || continue
+    any=1
+    st=$(cat "$f" 2>/dev/null | tr -d '[:space:]')
+    [[ "$st" == "connected" ]] && { echo on; return 0; }
+  done
+  [[ "$any" -eq 1 ]] && { echo off; return 0; }
+  echo unknown; return 1
+}
+
+dp_connected() {
+  local j p d
+  # DRM first — reliable on plug events; amixer/pactl can lag
+  d=$(dp_from_drm)
+  [[ "$d" == "on" ]] && return 0
+  [[ "$d" == "off" ]] && return 1
+  j=$(jack_from_amixer 'DP0 Jack')
+  [[ "$j" == "on" ]] && return 0
+  [[ "$j" == "off" ]] && return 1
+  p=$(dp_from_pactl)
+  [[ "$p" == "on" ]] && return 0
+  return 1
+}
+
+list_profiles() {
+  pactl_list_cards | awk -v card="$CARD" '
+    BEGIN{incard=0; inprof=0}
+    $1=="Name:" && $2==card {incard=1; next}
+    incard && $1=="Name:" {exit}
+    incard && /^[[:space:]]*Profiles:/ {inprof=1; next}
+    incard && /^[[:space:]]*Active Profile:/ {exit}
+    incard && inprof {
+      line=$0
+      if (line !~ /^[[:space:]]/) next
+      sub(/^[[:space:]]+/,"",line)
+      # profile name is text before the first ": " (priority/available blob)
+      n=index(line, ":")
+      if (n<1) next
+      name=substr(line, 1, n-1)
+      gsub(/^[[:space:]]+|[[:space:]]+$/,"",name)
+      if (name != "" && name != "off") print name
+    }
+  '
+}
+
+active_profile() {
+  pactl_list_cards | awk -v c="$CARD" '
+    $1=="Name:" && $2==c {f=1; next}
+    f && $1=="Name:" {exit}
+    f && /Active Profile:/ {sub(/^[^:]*:[[:space:]]*/,""); print; exit}
+  '
+}
+
+# Try candidates directly (do not depend on slow/fragile list parse)
+HIFI_DP_CANDIDATES=(
+  'HiFi (DisplayPort, Speaker)'
+  'HiFi (Speaker, DisplayPort)'
+  'HiFi (DisplayPort)'
+  'HiFi (HDMI, Speaker)'
+  'HiFi'
+)
+
+pick_hifi_dp() {
+  local profiles c
+  profiles=$(list_profiles)
+  if [[ -n "$profiles" ]]; then
+    log "profiles available: $(echo "$profiles" | tr '\n' '|' )"
+    for c in "${HIFI_DP_CANDIDATES[@]}"; do
+      echo "$profiles" | grep -Fqx "$c" && { echo "$c"; return 0; }
+    done
+    # any HiFi line mentioning DisplayPort/HDMI
+    c=$(echo "$profiles" | awk 'BEGIN{IGNORECASE=1} /hifi/ && (/displayport/ || /hdmi/) {print; exit}')
+    [[ -n "$c" ]] && { echo "$c"; return 0; }
+    # last resort: any HiFi
+    c=$(echo "$profiles" | awk 'BEGIN{IGNORECASE=1} /^HiFi/ {print; exit}')
+    [[ -n "$c" ]] && { echo "$c"; return 0; }
+  else
+    log "list_profiles empty; will try hardcoded names"
+  fi
+  # Return first hardcoded candidate — set_profile will verify
+  echo "${HIFI_DP_CANDIDATES[0]}"
+}
+
+restore_speaker_mixers() {
+  log "restore speaker mixers for Pro Audio"
+  amixer -c 0 cset name='DISPLAY_PORT_RX_0 Audio Mixer MultiMedia2' 0 >/dev/null 2>&1
+  amixer -c 0 cset name='PRIMARY_MI2S_RX Audio Mixer MultiMedia1' 1 >/dev/null 2>&1
+  amixer -c 0 cset name='RX_CODEC_DMA_RX_0 Audio Mixer MultiMedia2' 1 >/dev/null 2>&1
+}
+
+set_profile() {
+  local profile="$1" before after
+  [[ -n "$profile" ]] || return 1
+  before=$(active_profile)
+  log "pactl set-card-profile $CARD '$profile' (was='$before')"
+  pactl_cmd set-card-profile "$CARD" "$profile"
+  sleep 0.2
+  after=$(active_profile)
+  log "active now='$after'"
+  # success if active matches request (substring OK)
+  if echo "$after" | grep -Fq "$profile"; then
+    return 0
+  fi
+  # pro-audio exact
+  if [[ "$profile" == "pro-audio" ]] && echo "$after" | grep -qi 'pro-audio'; then
+    return 0
+  fi
+  return 1
+}
+
+set_profile_hifi_dp() {
+  local c profiles
+  profiles=$(list_profiles)
+  for c in "${HIFI_DP_CANDIDATES[@]}"; do
+    if [[ -n "$profiles" ]] && ! echo "$profiles" | grep -Fq "$c"; then
+      continue
+    fi
+    if set_profile "$c"; then
+      return 0
+    fi
+  done
+  # Try every listed HiFi profile
+  while IFS= read -r c; do
+    [[ -z "$c" ]] && continue
+    echo "$c" | grep -qi 'hifi' || continue
+    if set_profile "$c"; then
+      return 0
+    fi
+  done <<< "$profiles"
+  log "failed to set any HiFi DP profile; profiles='$(echo "$profiles" | tr '\n' '|')'"
+  return 1
+}
+
+find_sink() {
+  local pattern="$1"
+  pactl_cmd list short sinks 2>/dev/null | awk -v pat="$pattern" 'BEGIN{IGNORECASE=1}
+    $2 ~ pat {print $2; exit}
+  '
+}
+
+set_default_sink_name() {
+  local sink="$1"
+  [[ -n "$sink" ]] || return 1
+  log "pactl set-default-sink $sink"
+  pactl_cmd set-default-sink "$sink" || return 1
+  # Move active sink-inputs to the new default (Plasma/apps stick otherwise)
+  local idx
+  while read -r idx; do
+    [[ -n "$idx" ]] || continue
+    pactl_cmd move-sink-input "$idx" "$sink" 2>/dev/null || true
+  done < <(pactl_cmd list short sink-inputs 2>/dev/null | awk '{print $1}')
+  return 0
+}
+
+enable_dp_mixers() {
+  amixer -c 0 cset name='PRIMARY_MI2S_RX Audio Mixer MultiMedia1' 0 >/dev/null 2>&1
+  amixer -c 0 cset name='RX_CODEC_DMA_RX_0 Audio Mixer MultiMedia2' 0 >/dev/null 2>&1
+  amixer -c 0 cset name='DISPLAY_PORT_RX_0 Audio Mixer MultiMedia2' 1 >/dev/null 2>&1
+}
+
+apply_hifi_dp() {
+  local sink i
+  set_profile_hifi_dp || return 1
+  enable_dp_mixers
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    sink=$(find_sink 'DisplayPort|HDMI|displayport|hdmi')
+    [[ -n "$sink" ]] && break
+    enable_dp_mixers
+    sleep 0.25
+  done
+  if [[ -z "$sink" ]]; then
+    log "DisplayPort sink missing after retries"
+    return 1
+  fi
+  set_default_sink_name "$sink" || true
+}
+
+apply_pro_audio() {
+  local sink i
+  set_profile "pro-audio" || return 1
+  restore_speaker_mixers
+  for i in 1 2 3 4 5 6 7 8; do
+    pactl_cmd list short sinks 2>/dev/null | grep -qi 'pro-output' && break
+    sleep 0.25
+  done
+  restore_speaker_mixers
+  sink=$(find_sink 'pro-output-0')
+  [[ -n "$sink" ]] || sink=$(find_sink 'pro-output')
+  set_default_sink_name "$sink" || true
+}
+
+apply_policy() {
+  resolve_card || { log "no card yet"; return 1; }
+  log "card=$CARD"
+
+  if dp_connected; then
+    log "DP/HDMI: connected → HiFi (DisplayPort, Speaker)"
+    apply_hifi_dp || return 1
+  else
+    log "DP/HDMI: disconnected → Pro Audio (speakers + headphones)"
+    apply_pro_audio || return 1
+  fi
+
+  log "active=$(active_profile)"
+  log "sinks=$(pactl_cmd list short sinks 2>/dev/null | tr '\n' '; ')"
+  return 0
+}
+
+dp_state_key() {
+  if dp_connected; then echo on; else echo off; fi
+}
+
+if ! wait_ready; then
+  log "PipeWire/WirePlumber/card not ready; exit 0"
+  exit 0
+fi
+
+# Wait until card resolves (boot race)
+for _ in $(seq 1 60); do
+  resolve_card && break
+  sleep 0.5
+done
+
+apply_policy || log "initial apply_policy failed (will retry on DP flip / next loop)"
+
+if [[ "$MODE" != "watch" ]]; then
+  log "once mode done"
+  exit 0
+fi
+
+LAST_DP=$(dp_state_key)
+log "watch mode: HDMI plug/unplug (last_dp=$LAST_DP)"
+while true; do
+  sleep "$POLL_SEC"
+  resolve_card || continue
+  cur=$(dp_state_key)
+  if [[ "$cur" != "$LAST_DP" ]]; then
+    log "DP state flip: $LAST_DP -> $cur"
+    # Brief settle for UCM/jack
+    sleep 0.4
+    apply_policy && LAST_DP=$(dp_state_key) || log "apply_policy failed after flip"
+  fi
+done

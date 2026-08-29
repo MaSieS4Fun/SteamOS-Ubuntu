@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Decky Loader
+Name[es]=Decky Loader
+Comment=Install Decky PluginLoader (requires Box64 or FEXEmu)
+Comment[es]=Instalar Decky (requiere Box64 o FEXEmu; Box64 recomendado)
+Exec=konsole -e bash -c 'sudo /usr/bin/install-decky; echo; read -r -p "Pulsa Enter para cerrar..."'
+Icon=steamdeck-gaming-return
+Terminal=false
+Categories=System;Utility;X-ARM-Manager;
+Keywords=decky;plugin;loader;steam;box64;fex;homebrew;
+StartupNotify=true

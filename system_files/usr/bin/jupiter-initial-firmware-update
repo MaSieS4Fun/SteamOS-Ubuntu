@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Steam Deck OOBE calls this for "mandatory" Jupiter firmware.
+# SM8550 hardware has none — succeed cleanly (exit 0).
+# Missing binary returns 127 and Steam logs "failed to run steamos-mandatory-update check".
+set -uo pipefail
+case "${1:-}" in
+  check) exit 0 ;;
+  *)     exit 0 ;;
+esac

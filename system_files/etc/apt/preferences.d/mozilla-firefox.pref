@@ -1,0 +1,5 @@
+# When the user runs `apt install firefox`, prefer Mozilla's .deb over any
+# Ubuntu transitional / snap stub (snapd is also pinned to -1 in nosnap.pref).
+Package: *
+Pin: origin packages.mozilla.org
+Pin-Priority: 1001

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Plasma Mobile → Gaming Mode (same path as desktop Return to Gaming Mode).
+set +e
+exec /usr/bin/steamos-session-select gamescope

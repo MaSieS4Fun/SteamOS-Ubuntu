@@ -1,0 +1,13 @@
+[Unit]
+Description=SM8550 HiFi profile + HDMI/DP sink policy
+After=pipewire.service wireplumber.service
+Wants=pipewire.service wireplumber.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/steamos-ubuntu/sm8550-prefer-speaker-sink --watch
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

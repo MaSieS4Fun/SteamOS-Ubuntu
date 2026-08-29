@@ -1,0 +1,15 @@
+[Unit]
+Description=SteamOS oneshot: next login is Gaming Mode (Deck-like)
+Documentation=file:///usr/share/doc/steamos-ubuntu
+PartOf=graphical-session.target
+After=graphical-session.target
+# Only when running a real desktop (not already inside gamescope)
+ConditionEnvironment=!STEAMOS_SESSION
+ConditionPathExists=!%t/gamescope-environment
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/steamos-ubuntu/steamos-schedule-gaming-next-login.sh
+
+[Install]
+WantedBy=graphical-session.target

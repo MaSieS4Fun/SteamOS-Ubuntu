@@ -1,0 +1,37 @@
+# AYN Odin 2 / Thor built-in pad (kernel rsinput) → joystick for SDL2, never mouse.
+# Permissions for Steam / gamescope / Plasma without root.
+# InputPlumber deck-uhid also creates Valve Steam Controller HID (28de) via uhid.
+
+KERNEL=="uhid", MODE="0660", GROUP="input", TAG+="uaccess"
+
+# Steam / gamescope must open InputPlumber's virtual Deck HID
+KERNEL=="hidraw*", ATTRS{idVendor}=="28de", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="28DE", MODE="0660", GROUP="input", TAG+="uaccess"
+
+# Native Xbox-layout pad from rsinput
+SUBSYSTEM=="input", ATTRS{name}=="AYN Odin2 Gamepad", \
+  ENV{ID_INPUT_JOYSTICK}="1", ENV{ID_INPUT_MOUSE}="", ENV{ID_INPUT_TOUCHPAD}="", \
+  MODE="0660", GROUP="input", TAG+="uaccess"
+SUBSYSTEM=="input", ATTRS{name}=="AYN Thor Gamepad", \
+  ENV{ID_INPUT_JOYSTICK}="1", ENV{ID_INPUT_MOUSE}="", ENV{ID_INPUT_TOUCHPAD}="", \
+  MODE="0660", GROUP="input", TAG+="uaccess"
+SUBSYSTEM=="input", ATTRS{name}=="RSInput Gamepad", \
+  ENV{ID_INPUT_JOYSTICK}="1", ENV{ID_INPUT_MOUSE}="", \
+  MODE="0660", GROUP="input", TAG+="uaccess"
+
+# Motion / touch / headset nodes must not look like joysticks (or mice)
+SUBSYSTEM=="input", ATTRS{name}=="AYN Odin2 Gamepad Motion Sensors", \
+  ENV{ID_INPUT_ACCELEROMETER}="1", ENV{ID_INPUT_JOYSTICK}="", ENV{ID_INPUT_MOUSE}="", MODE="0660", GROUP="input"
+SUBSYSTEM=="input", ATTRS{name}=="AYN Thor Gamepad Motion Sensors", \
+  ENV{ID_INPUT_ACCELEROMETER}="1", ENV{ID_INPUT_JOYSTICK}="", ENV{ID_INPUT_MOUSE}="", MODE="0660", GROUP="input"
+SUBSYSTEM=="input", ATTRS{name}=="AYN Odin2 Motion", \
+  ENV{ID_INPUT_ACCELEROMETER}="1", ENV{ID_INPUT_JOYSTICK}="", MODE="0660", GROUP="input"
+SUBSYSTEM=="input", ATTRS{name}=="AYN Thor Motion", \
+  ENV{ID_INPUT_ACCELEROMETER}="1", ENV{ID_INPUT_JOYSTICK}="", MODE="0660", GROUP="input"
+SUBSYSTEM=="input", ATTRS{name}=="AYN Odin2 Gamepad Touchpad", \
+  ENV{ID_INPUT_JOYSTICK}="", ENV{ID_INPUT_MOUSE}="", MODE="0660", GROUP="input"
+SUBSYSTEM=="input", ATTRS{name}=="AYN Odin2 Gamepad Headset Jack", \
+  ENV{ID_INPUT_JOYSTICK}="", MODE="0660", GROUP="input"
+
+# js* nodes
+KERNEL=="js[0-9]*", SUBSYSTEM=="input", MODE="0660", GROUP="input", TAG+="uaccess"

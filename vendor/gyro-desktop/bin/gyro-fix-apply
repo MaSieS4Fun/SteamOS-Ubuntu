@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Write [user] motion settings and restart qcom-motion (if running).
+set -euo pipefail
+
+STATE_DIR="${GYRO_DESKTOP_STATE:-/var/lib/masi/gyro-desktop}"
+STATE_FILE="${STATE_DIR}/state.ini"
+
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+[[ "${EUID}" -eq 0 ]] || die "run as root"
+
+export GYRO_SENS="${GYRO_SENS:-}"
+export ACCEL_SENS="${ACCEL_SENS:-}"
+export INVERT_GYRO_H="${INVERT_GYRO_H:-}"
+export INVERT_GYRO_V="${INVERT_GYRO_V:-}"
+export INVERT_ACCEL_H="${INVERT_ACCEL_H:-}"
+export INVERT_ACCEL_V="${INVERT_ACCEL_V:-}"
+PROFILE="${PROFILE:-}"
+RESTART="${RESTART:-1}"
+
+CALIB="$("$(dirname "$0")/gyro-fix-dsu" calib-path)"
+install -d -m 0755 "$(dirname "$CALIB")" "$STATE_DIR"
+touch "$CALIB"
+chmod 0644 "$CALIB"
+
+python3 - "$CALIB" <<'PY'
+import configparser, os, sys
+
+def as_bool(env_key):
+    v = os.environ.get(env_key, "")
+    if v in ("0", "1", "true", "false", "True", "False"):
+        return "true" if v.lower() in ("1", "true") else "false"
+    return None
+
+path = sys.argv[1]
+cp = configparser.ConfigParser()
+cp.read(path)
+if "user" not in cp:
+    cp["user"] = {}
+u = cp["user"]
+if os.environ.get("GYRO_SENS"):
+    u["gyro_sensitivity"] = os.environ["GYRO_SENS"]
+if os.environ.get("ACCEL_SENS"):
+    u["accel_sensitivity"] = os.environ["ACCEL_SENS"]
+for key, env in (
+    ("invert_gyro_horizontal", "INVERT_GYRO_H"),
+    ("invert_gyro_vertical", "INVERT_GYRO_V"),
+    ("invert_accel_horizontal", "INVERT_ACCEL_H"),
+    ("invert_accel_vertical", "INVERT_ACCEL_V"),
+):
+    b = as_bool(env)
+    if b is not None:
+        u[key] = b
+# Drop legacy shared keys so gyro/accel stay independent
+u.pop("invert_horizontal", None)
+u.pop("invert_vertical", None)
+with open(path, "w", encoding="utf-8") as f:
+    cp.write(f)
+print(path)
+PY
+
+if [[ -n "$PROFILE" ]]; then
+  [[ -f "$STATE_FILE" ]] || printf '[desktop]\ndsu_enabled=false\ndsu_always_on=false\n' >"$STATE_FILE"
+  if grep -q '^profile=' "$STATE_FILE" 2>/dev/null; then
+    sed -i "s/^profile=.*/profile=${PROFILE}/" "$STATE_FILE"
+  else
+    printf 'profile=%s\n' "$PROFILE" >>"$STATE_FILE"
+  fi
+fi
+
+if [[ "$RESTART" == "1" ]] && systemctl is-active --quiet qcom-motion.service; then
+  systemctl restart qcom-motion.service
+  echo "restarted qcom-motion"
+elif [[ "$RESTART" == "1" ]]; then
+  echo "settings saved (qcom-motion not running; start DSU to apply live)"
+fi

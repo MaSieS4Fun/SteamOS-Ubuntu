@@ -1,0 +1,897 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+/*
+ * rds-ctl.cpp is based on v4l2-ctl.cpp
+ *
+ * the following applies for all RDS related parts:
+ * Copyright 2012 Cisco Systems, Inc. and/or its affiliates. All rights reserved.
+ * Author: Konke Radlow <koradlow@gmail.com>
+ */
+
+#include <cctype>
+#include <cerrno>
+#include <clocale>
+#include <cmath>
+#include <csignal>
+#include <cstring>
+#include <ctime>
+#include <map>
+#include <string>
+#include <vector>
+
+#include <dirent.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+#include <linux/videodev2.h>
+#include <v4l2-info.h>
+#include <libv4l2rds.h>
+#include <v4l-getsubopt.h>
+
+using dev_vec = std::vector<std::string>;
+using dev_map = std::map<std::string, std::string>;
+
+/* Short option list
+
+   Please keep in alphabetical order.
+   That makes it easier to see which short options are still free.
+
+   In general the lower case is used to set something and the upper
+   case is used to retrieve a setting. */
+enum Option {
+	OptRBDS = 'b',
+	OptSetDevice = 'd',
+	OptGetDriverInfo = 'D',
+	OptGetFreq = 'F',
+	OptSetFreq = 'f',
+	OptHelp = 'h',
+	OptReadRds = 'R',
+	OptGetTuner = 'T',
+	OptAll = 128,
+	OptFreqSeek,
+	OptListDevices,
+	OptListFreqBands,
+	OptOpenFile,
+	OptPrintBlock,
+	OptSilent,
+	OptTMC,
+	OptTunerIndex,
+	OptVerbose,
+	OptWaitLimit,
+	OptLast = 256
+};
+
+struct ctl_parameters {
+	bool terminate_decoding;
+	char options[OptLast];
+	char fd_name[80];
+	bool filemode_active;
+	double freq;
+	uint32_t wait_limit;
+	uint8_t tuner_index;
+	struct v4l2_hw_freq_seek freq_seek;
+};
+
+static struct ctl_parameters params;
+static int app_result;
+
+static struct option long_options[] = {
+	{"all", no_argument, nullptr, OptAll},
+	{"rbds", no_argument, nullptr, OptRBDS},
+	{"device", required_argument, nullptr, OptSetDevice},
+	{"file", required_argument, nullptr, OptOpenFile},
+	{"freq-seek", required_argument, nullptr, OptFreqSeek},
+	{"get-freq", no_argument, nullptr, OptGetFreq},
+	{"get-tuner", no_argument, nullptr, OptGetTuner},
+	{"help", no_argument, nullptr, OptHelp},
+	{"info", no_argument, nullptr, OptGetDriverInfo},
+	{"list-devices", no_argument, nullptr, OptListDevices},
+	{"list-freq-bands", no_argument, nullptr, OptListFreqBands},
+	{"print-block", no_argument, nullptr, OptPrintBlock},
+	{"read-rds", no_argument, nullptr, OptReadRds},
+	{"set-freq", required_argument, nullptr, OptSetFreq},
+	{"tmc", no_argument, nullptr, OptTMC},
+	{"tuner-index", required_argument, nullptr, OptTunerIndex},
+	{"silent", no_argument, nullptr, OptSilent},
+	{"verbose", no_argument, nullptr, OptVerbose},
+	{"wait-limit", required_argument, nullptr, OptWaitLimit},
+	{nullptr, 0, nullptr, 0}
+};
+
+static void usage_hint()
+{
+	fprintf(stderr, "Try 'rds-ctl --help' for more information.\n");
+}
+
+static void usage_common()
+{
+	printf("\nGeneral/Common options:\n"
+	       "  --all              display all device information available\n"
+	       "  -D, --info         show driver info [VIDIOC_QUERYCAP]\n"
+	       "  -d, --device <dev> use device <dev>\n"
+	       "                     If <dev> starts with a digit, then /dev/radio<dev> is used\n"
+	       "                     default: checks for RDS-capable devices,\n"
+	       "                     uses device with lowest ID\n"
+	       "  -h, --help         display this help message\n"
+	       "  --list-devices     list all v4l radio devices with RDS capabilities\n"
+	       );
+}
+
+static void usage_tuner()
+{
+	printf("\nTuner/Modulator options:\n"
+	       "  -F, --get-freq     query the frequency [VIDIOC_G_FREQUENCY]\n"
+	       "  -f, --set-freq <freq>\n"
+	       "                     set the frequency to <freq> MHz [VIDIOC_S_FREQUENCY]\n"
+	       "  -T, --get-tuner    query the tuner settings [VIDIOC_G_TUNER]\n"
+	       "  --tuner-index <idx> Use idx as tuner idx for tuner/modulator commands\n"
+	       "  --freq-seek dir=<0/1>,wrap=<0/1>,spacing=<hz>\n"
+	       "                     perform a hardware frequency seek [VIDIOC_S_HW_FREQ_SEEK]\n"
+	       "                     dir is 0 (seek downward) or 1 (seek upward)\n"
+	       "                     wrap is 0 (do not wrap around) or 1 (wrap around)\n"
+	       "                     spacing sets the seek resolution (use 0 for default)\n"
+	       "  --list-freq-bands  display all frequency bands for the tuner/modulator\n"
+	       "                     [VIDIOC_ENUM_FREQ_BANDS]\n"
+	       );
+}
+
+static void usage_rds()
+{
+	printf("\nRDS options: \n"
+	       "  -b, --rbds         parse the RDS data according to the RBDS standard\n"
+	       "  -R, --read-rds     enable reading of RDS data from device\n"
+	       "  --file <path>      open a RDS stream file dump instead of a device\n"
+	       "                     all General and Tuner Options are disabled in this mode\n"
+	       "  --wait-limit <ms>  defines the maximum wait duration for avaibility of new\n"
+	       "                     RDS data\n"
+	       "                     <default>: 5000 ms\n"
+	       "  --print-block      prints all valid RDS fields, whenever a value is updated\n"
+	       "                     instead of printing only updated values\n"
+	       "  --tmc              print information about TMC (Traffic Message Channel) messages\n"
+	       "  --silent           only set the result code, do not print any messages\n"
+	       "  --verbose          turn on verbose mode - every received RDS group\n"
+	       "                     will be printed\n"
+	       );
+}
+
+static void usage()
+{
+	printf("Usage:\n");
+	usage_common();
+	usage_tuner();
+	usage_rds();
+}
+
+static void signal_handler_interrupt(int signum)
+{
+	fprintf(stderr, "Interrupt received: Terminating program\n");
+	params.terminate_decoding = true;
+}
+
+static int doioctl_name(int fd, unsigned long int request, void *parm, const char *name)
+{
+	int retval = ioctl(fd, request, parm);
+
+	if (retval < 0) {
+		app_result = -1;
+	}
+	if (params.options[OptSilent]) return retval;
+	if (retval < 0)
+		printf("%s: failed: %s\n", name, strerror(errno));
+	else if (params.options[OptVerbose])
+		printf("%s: ok\n", name);
+
+	return retval;
+}
+
+#define doioctl(n, r, p) doioctl_name(n, r, p, #r)
+
+static bool is_radio_dev(const char *name)
+{
+	return !memcmp(name, "radio", 5);
+}
+
+static void print_devices(const dev_vec& files)
+{
+	dev_map cards;
+	int fd = -1;
+	std::string bus_info;
+	struct v4l2_capability vcap;
+
+	for (const auto &file : files) {
+		fd = open(file.c_str(), O_RDWR);
+		memset(&vcap, 0, sizeof(vcap));
+		if (fd < 0)
+			continue;
+		doioctl(fd, VIDIOC_QUERYCAP, &vcap);
+		close(fd);
+		bus_info = reinterpret_cast<const char *>(vcap.bus_info);
+	if (cards[bus_info].empty())
+			cards[bus_info] += std::string(reinterpret_cast<char *>(vcap.card))
+				+ " (" + bus_info + "):\n";
+		cards[bus_info] += "\t" + file;
+		cards[bus_info] += "\n";
+	}
+	for (const auto &card : cards) {
+		printf("%s\n", card.second.c_str());
+	}
+}
+static dev_vec list_devices()
+{
+	DIR *dp;
+	struct dirent *ep;
+	dev_vec files;
+	dev_vec valid_devices;
+	dev_map links;
+
+	struct v4l2_tuner vt;
+
+	dp = opendir("/dev");
+	if (dp == nullptr) {
+		perror ("Couldn't open the directory");
+		std::exit(EXIT_FAILURE);
+	}
+	while ((ep = readdir(dp)))
+		if (is_radio_dev(ep->d_name))
+			files.push_back(std::string("/dev/") + ep->d_name);
+	closedir(dp);
+
+	/* Iterate through all devices, and remove all non-accessible devices
+	 * and all devices that don't offer the RDS_BLOCK_IO capability */
+	for (auto iter = files.begin();
+			iter != files.end();) {
+		int fd = open(iter->c_str(), O_RDONLY | O_NONBLOCK);
+		std::string bus_info;
+
+		if (fd < 0) {
+			iter++;
+			continue;
+		}
+		memset(&vt, 0, sizeof(vt));
+		if (ioctl(fd, VIDIOC_G_TUNER, &vt) != 0) {
+			close(fd);
+			iter++;
+			continue;
+		}
+		/* remove device if it doesn't support rds block I/O */
+		if (vt.capability & V4L2_TUNER_CAP_RDS_BLOCK_IO)
+			valid_devices.push_back(*iter++);
+		else
+			iter = files.erase(iter);
+		close(fd);
+	}
+	return valid_devices;
+}
+
+static int parse_subopt(char **subs, const char * const *subopts, char **value)
+{
+	int opt = v4l_getsubopt(subs, const_cast<char * const *>(subopts), value);
+
+	if (opt == -1) {
+		fprintf(stderr, "Invalid suboptions specified\n");
+		return -1;
+	}
+	if (*value == nullptr) {
+		fprintf(stderr, "No value given to suboption <%s>\n",
+				subopts[opt]);
+		return -1;
+	}
+	return opt;
+}
+
+static void parse_freq_seek(char *optarg, struct v4l2_hw_freq_seek &seek)
+{
+	char *value;
+	char *subs = optarg;
+
+	while (*subs != '\0') {
+		static constexpr const char *subopts[] = {
+			"dir",
+			"wrap",
+			"spacing",
+			nullptr
+		};
+
+		switch (parse_subopt(&subs, subopts, &value)) {
+		case 0:
+			seek.seek_upward = strtol(value, nullptr, 0);
+			break;
+		case 1:
+			seek.wrap_around = strtol(value, nullptr, 0);
+			break;
+		case 2:
+			seek.spacing = strtol(value, nullptr, 0);
+			break;
+		default:
+			usage_tuner();
+			std::exit(EXIT_FAILURE);
+		}
+	}
+}
+
+static void print_byte(char byte, bool linebreak)
+{
+	int count = 8;
+	printf(" ");
+	while (count--) {
+		printf("%d", (byte & 128) ? 1 : 0 );
+		byte <<= 1;
+	}
+	if (linebreak)
+		printf("\n");
+}
+
+static void print_rds_group(const struct v4l2_rds_group *rds_group)
+{
+	printf("\nComplete RDS data group received \n");
+	printf("PI: %04x\n", rds_group->pi);
+	printf("Group: %u%c \n", rds_group->group_id, rds_group->group_version);
+	printf("Data B:");
+	print_byte(rds_group->data_b_lsb, true);
+	printf("Data C:");
+	print_byte(rds_group->data_c_msb, false);
+	print_byte(rds_group->data_c_lsb, true);
+	printf("Data D:");
+	print_byte(rds_group->data_d_msb, false);
+	print_byte(rds_group->data_d_lsb, true);
+	printf("\n");
+}
+
+static void print_decoder_info(uint8_t di)
+{
+	printf("\nDI: ");
+	if (di & V4L2_RDS_FLAG_STEREO)
+		printf("Stereo, ");
+	else
+		printf("Mono, ");
+	if (di & V4L2_RDS_FLAG_ARTIFICIAL_HEAD)
+		printf("Artificial Head, ");
+	else
+		printf("No Artificial Head, ");
+	if (di & V4L2_RDS_FLAG_COMPRESSED)
+		printf("Compressed, ");
+	else
+		printf("Not Compressed, ");
+	if (di & V4L2_RDS_FLAG_DYNAMIC_PTY)
+		printf("Dynamic PTY");
+	else
+		printf("Static PTY");
+}
+
+static void print_rds_tmc(const struct v4l2_rds *handle, uint32_t updated_fields)
+{
+	const struct v4l2_rds_tmc_msg *msg = &handle->tmc.tmc_msg;
+	const struct v4l2_tmc_additional_set *set = &msg->additional;
+
+	if (updated_fields & V4L2_RDS_TMC_SG) {
+		printf("\nTMC Single-grp: location: %04x, event: %04x, extent: %02x "
+			"duration: %02x", msg->location, msg->event,
+			msg->extent, msg->dp);
+		return;
+	}
+	if (updated_fields & V4L2_RDS_TMC_MG) {
+		printf("\nTMC Multi-grp: length: %02d, location: %04x, event: %04x,\n"
+		"               extent: %02x duration: %02x", msg->length, msg->location, msg->event,
+			msg->extent, msg->dp);
+		for (int i = 0; i < set->size; i++) {
+			printf("\n               additional[%02d]: label: %02d, value: %04x",
+			i, set->fields[i].label, set->fields[i].data);
+		}
+		return;
+	}
+}
+
+static void print_rds_tmc_tuning(const struct v4l2_rds *handle, uint32_t updated_fields)
+{
+	const struct v4l2_tmc_tuning *tuning = &handle->tmc.tuning;
+	const struct v4l2_tmc_station *station;
+	
+	if (updated_fields & V4L2_RDS_TMC_TUNING) {
+		printf("\nTMC Service provider: %s, %u alternative stations\n", handle->tmc.spn, tuning->station_cnt);
+		for (int i = 0; i < tuning->station_cnt; i++) {
+			station = &tuning->station[i];
+			printf("PI(ON %02u) = %04x, AFs: %u, mapped AFs: %u \n", i, station->pi,
+					station->afi.af_size, station->afi.mapped_af_size);
+			for (int j = 0; j < station->afi.af_size; j++)
+				printf("        AF%02d: %.1fMHz\n", j, station->afi.af[j] / 1000000.0);
+			for (int k = 0; k < station->afi.mapped_af_size; k++)
+				printf("        m_AF%02d: %.1fMHz => %.1fMHz\n", k,
+						station->afi.mapped_af_tuning[k] / 1000000.0,
+						station->afi.mapped_af[k] / 1000000.0);
+			if (station->ltn != 0 || station->msg != 0 || station-> sid != 0)
+				printf("        ltn: %02x, msg: %02x, sid: %02x\n", station->ltn,
+						station->msg, station->sid);
+		}
+	}
+}
+
+static void print_rds_statistics(const struct v4l2_rds_statistics *statistics)
+{
+	printf("\n\nRDS Statistics: \n");
+	printf("received blocks / received groups: %u / %u\n",
+		statistics->block_cnt, statistics->group_cnt);
+
+	double block_error_percentage = 0;
+
+	if (statistics->block_cnt)
+		block_error_percentage =
+			(static_cast<float>(statistics->block_error_cnt) / statistics->block_cnt) * 100.0;
+	printf("block errors / group errors: %u (%3.2f%%) / %u \n",
+		statistics->block_error_cnt,
+		block_error_percentage, statistics->group_error_cnt);
+
+	double block_corrected_percentage = 0;
+
+	if (statistics->block_cnt)
+		block_corrected_percentage = (
+			static_cast<float>(statistics->block_corrected_cnt) / statistics->block_cnt) * 100.0;
+	printf("corrected blocks: %u (%3.2f%%)\n",
+		statistics->block_corrected_cnt, block_corrected_percentage);
+	for (int i = 0; i < 16; i++)
+		printf("Group %02d: %u\n", i, statistics->group_type_cnt[i]);
+}
+
+static void print_rds_af(const struct v4l2_rds_af_set *af_set)
+{
+	int counter = 0;
+
+	printf("\nAnnounced AFs: %u", af_set->announced_af);
+	for (int i = 0; i < af_set->size && i < af_set->announced_af; i++, counter++) {
+		if (af_set->af[i] >= 87500000 ) {
+			printf("\nAF%02d: %.1fMHz", counter, af_set->af[i] / 1000000.0);
+			continue;
+		}
+		printf("\nAF%02d: %.3fkHz", counter, af_set->af[i] / 1000.0);
+	}
+}
+
+static void print_rds_eon(const struct v4l2_rds_eon_set *eon_set)
+{
+	int counter = 0;
+
+	printf("\n\nEnhanced Other Network information: %u channels", eon_set->size);
+	for (int i = 0; i < eon_set->size; i++, counter++) {
+		if (eon_set->eon[i].valid_fields & V4L2_RDS_PI)
+			printf("\nPI(ON %02i) =  %04x", i, eon_set->eon[i].pi);
+		if (eon_set->eon[i].valid_fields & V4L2_RDS_PS)
+			printf("\nPS(ON %02i) =  %s", i, eon_set->eon[i].ps);
+		if (eon_set->eon[i].valid_fields & V4L2_RDS_PTY)
+			printf("\nPTY(ON %02i) =  %0u", i, eon_set->eon[i].pty);
+		if (eon_set->eon[i].valid_fields & V4L2_RDS_LSF)
+			printf("\nLSF(ON %02i) =  %0u", i, eon_set->eon[i].lsf);
+		if (eon_set->eon[i].valid_fields & V4L2_RDS_AF)
+			printf("\nPTY(ON %02i) =  %0u", i, eon_set->eon[i].pty);
+		if (eon_set->eon[i].valid_fields & V4L2_RDS_TP)
+			printf("\nTP(ON %02i): %s", i, eon_set->eon[i].tp? "yes":"no");
+		if (eon_set->eon[i].valid_fields & V4L2_RDS_TA)
+			printf("\nTA(ON %02i): %s", i, eon_set->eon[i].tp? "yes":"no");
+		if (eon_set->eon[i].valid_fields & V4L2_RDS_AF) {
+			printf("\nAF(ON %02i): size=%i", i, eon_set->eon[i].af.size);
+			print_rds_af(&(eon_set->eon[i].af));
+		}
+	}
+}
+
+static void print_rds_pi(const struct v4l2_rds *handle)
+{
+	uint16_t pi = handle->pi;
+
+	if (handle->is_rbds) {
+		char callsign[5] = { 0 };
+		uint8_t nibble = handle->pi >> 12;
+
+		if (pi >= 0xafa1 && pi <= 0xafa9)
+			pi = (pi & 0xf) << 12;
+		else if (pi > 0xaf11 && pi <= 0xaf1f)
+			pi = (pi & 0xff) << 8;
+		else if (pi > 0xaf21 && pi <= 0xafaf)
+			pi = (pi & 0xff) << 8;
+
+		if (pi > 0xa100 && pi <= 0xa9ff)
+			pi -= 0x9100;
+		if (pi > 0x1000 && pi <= 0x54a7) {
+			pi -= 4096;
+			callsign[0] = 'K';
+		} else if (pi >= 0x54a8 && pi <= 0x994f) {
+			pi -= 21672;
+			callsign[0] = 'W';
+		}
+		if (callsign[0]) {
+			callsign[1] = 'A' + pi / 676;
+			callsign[2] = 'A' + (pi / 26) % 26;
+			callsign[3] = 'A' + pi % 26;
+			printf("\nCall Sign: %s", callsign);
+		}
+		if (nibble != 0x0b && nibble != 0x0d && nibble != 0x0e)
+			return;
+	}
+	printf("\nArea Coverage: %s", v4l2_rds_get_coverage_str(handle));
+}
+
+static void print_rds_data(const struct v4l2_rds *handle, uint32_t updated_fields)
+{
+	if (params.options[OptPrintBlock])
+		updated_fields = 0xffffffff;
+
+	if ((updated_fields & V4L2_RDS_PI) &&
+			(handle->valid_fields & V4L2_RDS_PI)) {
+		printf("\nPI: %04x", handle->pi);
+		print_rds_pi(handle);
+	}
+
+	if (updated_fields & V4L2_RDS_PS &&
+			handle->valid_fields & V4L2_RDS_PS) {
+		printf("\nPS: %s", handle->ps);
+	}
+
+	if (updated_fields & V4L2_RDS_PTY && handle->valid_fields & V4L2_RDS_PTY)
+		printf("\nPTY: %0u -> %s", handle->pty, v4l2_rds_get_pty_str(handle));
+
+	if (updated_fields & V4L2_RDS_PTYN && handle->valid_fields & V4L2_RDS_PTYN) {
+		printf("\nPTYN: %s", handle->ptyn);
+	}
+
+	if (updated_fields & V4L2_RDS_TIME) {
+		printf("\nTime: %s", ctime(&handle->time));
+	}
+	if (updated_fields & V4L2_RDS_RT && handle->valid_fields & V4L2_RDS_RT) {
+		printf("\nRT: %s", handle->rt);
+	}
+
+	if ((updated_fields & (V4L2_RDS_TP | V4L2_RDS_TA)) &&
+	    (handle->valid_fields & (V4L2_RDS_TP | V4L2_RDS_TA)))
+		printf("\nTP: %s  TA: %s", (handle->tp) ? "yes" : "no",
+			handle->ta ? "yes" : "no");
+	if (updated_fields & V4L2_RDS_MS && handle->valid_fields & V4L2_RDS_MS)
+		printf("\nMS Flag: %s", (handle->ms) ? "Music" : "Speech");
+	if (updated_fields & V4L2_RDS_ECC && handle->valid_fields & V4L2_RDS_ECC)
+		printf("\nECC: %X%x, Country: %u -> %s",
+		handle->ecc >> 4, handle->ecc & 0x0f, handle->pi >> 12,
+		v4l2_rds_get_country_str(handle));
+	if (updated_fields & V4L2_RDS_LC && handle->valid_fields & V4L2_RDS_LC)
+		printf("\nLanguage: %u -> %s ", handle->lc,
+		v4l2_rds_get_language_str(handle));
+	if (updated_fields & V4L2_RDS_DI && handle->valid_fields & V4L2_RDS_DI)
+		print_decoder_info(handle->di);
+	if (updated_fields & V4L2_RDS_ODA &&
+			handle->decode_information & V4L2_RDS_ODA) {
+		for (int i = 0; i < handle->rds_oda.size; ++i)
+			printf("\nODA Group: %02u%c, AID: %08x", handle->rds_oda.oda[i].group_id,
+			handle->rds_oda.oda[i].group_version, handle->rds_oda.oda[i].aid);
+	}
+	if (updated_fields & V4L2_RDS_AF && handle->valid_fields & V4L2_RDS_AF)
+		print_rds_af(&handle->rds_af);
+	if (updated_fields & V4L2_RDS_TMC_TUNING && handle->valid_fields & V4L2_RDS_TMC_TUNING)
+		print_rds_tmc_tuning(handle, updated_fields);
+	if (params.options[OptPrintBlock])
+		printf("\n");
+	if (params.options[OptTMC])
+		print_rds_tmc(handle, updated_fields);
+}
+
+static void read_rds(struct v4l2_rds *handle, const int fd, const int wait_limit)
+{
+	int byte_cnt = 0;
+	int error_cnt = 0;
+	uint32_t updated_fields = 0x00;
+	struct v4l2_rds_data rds_data; /* read buffer for rds blocks */
+
+	while (!params.terminate_decoding) {
+		memset(&rds_data, 0, sizeof(rds_data));
+		if ((byte_cnt=read(fd, &rds_data, 3)) != 3) {
+			if (byte_cnt == 0) {
+				printf("\nEnd of input file reached \n");
+				break;
+			}
+			if (++error_cnt > 2) {
+				fprintf(stderr, "\nError reading from "
+					"device (no RDS data available)\n");
+				break;
+			}
+			/* wait for new data to arrive: transmission of 1
+			 * group takes ~88.7ms */
+			usleep(wait_limit * 1000);
+		}
+		else if (byte_cnt == 3) {
+			error_cnt = 0;
+			/* true if a new group was decoded */
+			if ((updated_fields = v4l2_rds_add(handle, &rds_data))) {
+				print_rds_data(handle, updated_fields);
+				if (params.options[OptVerbose])
+					 print_rds_group(v4l2_rds_get_group(handle));
+			}
+		}
+	}
+	/* print a summary of all valid RDS-fields before exiting */
+	printf("\nSummary of valid RDS-fields:");
+	print_rds_data(handle, 0xFFFFFFFF);
+}
+
+static void read_rds_from_fd(const int fd)
+{
+	struct v4l2_rds *rds_handle;
+
+	/* create an rds handle for the current device */
+	if (!(rds_handle = v4l2_rds_create(params.options[OptRBDS]))) {
+		fprintf(stderr, "Failed to init RDS lib: %s\n", strerror(errno));
+		std::exit(EXIT_FAILURE);
+	}
+
+	/* try to receive and decode RDS data */
+	read_rds(rds_handle, fd, params.wait_limit);
+	if (rds_handle->valid_fields & V4L2_RDS_EON)
+		print_rds_eon(&rds_handle->rds_eon);
+	print_rds_statistics(&rds_handle->rds_statistics);
+
+	v4l2_rds_destroy(rds_handle);
+}
+
+static int parse_cl(int argc, char **argv)
+{
+	int i = 0;
+	int idx = 0;
+	int opt = 0;
+	/* 26 letters in the alphabet, case sensitive = 26 * 2 possible
+	 * short options, where each option requires at most two chars
+	 * {option, optional argument} */
+	char short_options[26 * 2 * 2 + 1];
+
+	if (argc == 1) {
+		usage_hint();
+		std::exit(EXIT_FAILURE);
+	}
+	for (i = 0; long_options[i].name; i++) {
+		if (!isalpha(long_options[i].val))
+			continue;
+		short_options[idx++] = long_options[i].val;
+		if (long_options[i].has_arg == required_argument)
+			short_options[idx++] = ':';
+	}
+	while (true) {
+		int option_index = 0;
+
+		short_options[idx] = 0;
+		opt = getopt_long(argc, argv, short_options,
+				 long_options, &option_index);
+		if (opt == -1)
+			break;
+
+		params.options[opt] = 1;
+		switch (opt) {
+		case OptSetDevice:
+			strncpy(params.fd_name, optarg, sizeof(params.fd_name) - 1);
+			if (optarg[0] >= '0' && optarg[0] <= '9' && strlen(optarg) <= 3) {
+				snprintf(params.fd_name, sizeof(params.fd_name), "/dev/radio%s", optarg);
+			}
+			params.fd_name[sizeof(params.fd_name) - 1] = '\0';
+			break;
+		case OptSetFreq:
+			params.freq = strtod(optarg, nullptr);
+			break;
+		case OptListDevices:
+			print_devices(list_devices());
+			break;
+		case OptFreqSeek:
+			parse_freq_seek(optarg, params.freq_seek);
+			break;
+		case OptTunerIndex:
+			params.tuner_index = strtoul(optarg, nullptr, 0);
+			break;
+		case OptOpenFile:
+		{
+			if (access(optarg, F_OK) != -1) {
+				params.filemode_active = true;
+				strncpy(params.fd_name, optarg, sizeof(params.fd_name));
+				params.fd_name[sizeof(params.fd_name) - 1] = '\0';
+			} else {
+				fprintf(stderr, "Unable to open file: %s\n", optarg);
+				return -1;
+			}
+			/* enable the read-rds option by default for convenience */
+			params.options[OptReadRds] = 1;
+			break;
+		}
+		case OptWaitLimit:
+			params.wait_limit = strtoul(optarg, nullptr, 0);
+			break;
+		case ':':
+			fprintf(stderr, "Option '%s' requires a value\n",
+				argv[optind]);
+			usage_hint();
+			return 1;
+		case '?':
+			if (argv[optind])
+				fprintf(stderr, "Unknown argument '%s'\n", argv[optind]);
+			usage_hint();
+			return 1;
+		}
+	}
+	if (optind < argc) {
+		printf("unknown arguments: ");
+		while (optind < argc)
+			printf("%s ", argv[optind++]);
+		printf("\n");
+		usage_hint();
+		return 1;
+	}
+	if (params.options[OptAll]) {
+		params.options[OptGetDriverInfo] = 1;
+		params.options[OptGetFreq] = 1;
+		params.options[OptGetTuner] = 1;
+		params.options[OptSilent] = 1;
+	}
+	/* set default value for wait limit, if not specified by user */
+	if (!params.options[OptWaitLimit])
+		params.wait_limit = 5000;
+
+	return 0;
+}
+
+static void set_options(const int fd, const int capabilities, struct v4l2_frequency *vf,
+			struct v4l2_tuner *tuner)
+{
+	double fac = 16;		/* factor for frequency division */
+
+	if (params.options[OptSetFreq]) {
+		vf->type = V4L2_TUNER_RADIO;
+		tuner->index = params.tuner_index;
+		if (doioctl(fd, VIDIOC_G_TUNER, tuner) == 0) {
+			fac = (tuner->capability & V4L2_TUNER_CAP_LOW) ? 16000 : 16;
+			vf->type = tuner->type;
+		}
+
+		vf->tuner = params.tuner_index;
+		vf->frequency = __u32(params.freq * fac);
+		if (doioctl(fd, VIDIOC_S_FREQUENCY, vf) == 0)
+			printf("Frequency for tuner %d set to %d (%f MHz)\n",
+				vf->tuner, vf->frequency, vf->frequency / fac);
+	}
+
+	if (params.options[OptFreqSeek]) {
+		params.freq_seek.tuner = params.tuner_index;
+		params.freq_seek.type = V4L2_TUNER_RADIO;
+		doioctl(fd, VIDIOC_S_HW_FREQ_SEEK, &params.freq_seek);
+	}
+}
+
+static void get_options(const int fd, const int capabilities, struct v4l2_frequency *vf,
+			struct v4l2_tuner *tuner)
+{
+	double fac = 16;		/* factor for frequency division */
+
+	if (params.options[OptGetFreq]) {
+		vf->type = V4L2_TUNER_RADIO;
+		tuner->index = params.tuner_index;
+		if (doioctl(fd, VIDIOC_G_TUNER, tuner) == 0) {
+			fac = (tuner->capability & V4L2_TUNER_CAP_LOW) ? 16000 : 16;
+			vf->type = tuner->type;
+		}
+		vf->tuner = params.tuner_index;
+		if (doioctl(fd, VIDIOC_G_FREQUENCY, vf) == 0)
+			printf("Frequency for tuner %d: %d (%f MHz)\n",
+				   vf->tuner, vf->frequency, vf->frequency / fac);
+	}
+
+	if (params.options[OptGetTuner]) {
+		struct v4l2_tuner vt;
+
+		memset(&vt, 0, sizeof(struct v4l2_tuner));
+		vt.index = params.tuner_index;
+		if (doioctl(fd, VIDIOC_G_TUNER, &vt) == 0) {
+			printf("Tuner %d:\n", vt.index);
+			printf("\tName                 : %s\n", vt.name);
+			printf("\tCapabilities         : %s\n",
+				tcap2s(vt.capability).c_str());
+			if (vt.capability & V4L2_TUNER_CAP_LOW)
+				printf("\tFrequency range      : %.1f MHz - %.1f MHz\n",
+					 vt.rangelow / 16000.0, vt.rangehigh / 16000.0);
+			else
+				printf("\tFrequency range      : %.1f MHz - %.1f MHz\n",
+					 vt.rangelow / 16.0, vt.rangehigh / 16.0);
+			printf("\tSignal strength/AFC  : %ld%%/%d\n",
+				lround(vt.signal / 655.25), vt.afc);
+			printf("\tCurrent audio mode   : %s\n", audmode2s(vt.audmode).c_str());
+			printf("\tAvailable subchannels: %s\n",
+					rxsubchans2s(vt.rxsubchans).c_str());
+		}
+	}
+
+	if (params.options[OptListFreqBands]) {
+		struct v4l2_frequency_band band;
+
+		memset(&band, 0, sizeof(band));
+		band.tuner = params.tuner_index;
+		band.type = V4L2_TUNER_RADIO;
+		band.index = 0;
+		printf("ioctl: VIDIOC_ENUM_FREQ_BANDS\n");
+		while (ioctl(fd, VIDIOC_ENUM_FREQ_BANDS, &band) >= 0) {
+			if (band.index)
+				printf("\n");
+			printf("\tIndex          : %d\n", band.index);
+			printf("\tModulation     : %s\n", modulation2s(band.modulation).c_str());
+			printf("\tCapability     : %s\n", tcap2s(band.capability).c_str());
+			if (band.capability & V4L2_TUNER_CAP_LOW)
+				printf("\tFrequency Range: %.3f MHz - %.3f MHz\n",
+				     band.rangelow / 16000.0, band.rangehigh / 16000.0);
+			else
+				printf("\tFrequency Range: %.3f MHz - %.3f MHz\n",
+				     band.rangelow / 16.0, band.rangehigh / 16.0);
+			band.index++;
+		}
+	}
+}
+
+int main(int argc, char **argv)
+{
+	int fd = -1;
+
+	/* command args */
+	struct v4l2_tuner tuner;	/* set_freq/get_freq */
+	struct v4l2_capability vcap;	/* list_cap */
+	struct v4l2_frequency vf;	/* get_freq/set_freq */
+
+	memset(&tuner, 0, sizeof(tuner));
+	memset(&vcap, 0, sizeof(vcap));
+	memset(&vf, 0, sizeof(vf));
+	strcpy(params.fd_name, "/dev/radio0");
+
+	/* define locale for unicode support */
+	if (!setlocale(LC_CTYPE, "")) {
+		fprintf(stderr, "Can't set the specified locale!\n");
+		return 1;
+	}
+	/* register signal handler for interrupt signal, to exit gracefully */
+	signal(SIGINT, signal_handler_interrupt);
+
+	/* try to parse the command line */
+	parse_cl(argc, argv);
+	if (params.options[OptHelp]) {
+		usage();
+		std::exit(EXIT_SUCCESS);
+	}
+
+	/* File Mode: disables all other features, except for RDS decoding */
+	if (params.filemode_active) {
+		if ((fd = open(params.fd_name, O_RDONLY|O_NONBLOCK)) < 0){
+			perror("error opening file");
+			std::exit(EXIT_FAILURE);
+		}
+		read_rds_from_fd(fd);
+		close(fd);
+		std::exit(EXIT_SUCCESS);
+	}
+
+	/* Device Mode: open the radio device as read-only and non-blocking */
+	if (!params.options[OptSetDevice]) {
+		/* check the system for RDS capable devices */
+		dev_vec devices = list_devices();
+		if (devices.empty()) {
+			fprintf(stderr, "No RDS-capable device found\n");
+			std::exit(EXIT_FAILURE);
+		}
+		strncpy(params.fd_name, devices[0].c_str(), sizeof(params.fd_name));
+		params.fd_name[sizeof(params.fd_name) - 1] = '\0';
+		printf("Using device: %s\n", params.fd_name);
+	}
+	if ((fd = open(params.fd_name, O_RDONLY | O_NONBLOCK)) < 0) {
+		fprintf(stderr, "Failed to open %s: %s\n", params.fd_name,
+			strerror(errno));
+		std::exit(EXIT_FAILURE);
+	}
+	doioctl(fd, VIDIOC_QUERYCAP, &vcap);
+
+	/* Info options */
+	if (params.options[OptGetDriverInfo])
+		v4l2_info_capability(vcap);
+	/* Set options */
+	set_options(fd, vcap.capabilities, &vf, &tuner);
+	/* Get options */
+	get_options(fd, vcap.capabilities, &vf, &tuner);
+	/* RDS decoding */
+	if (params.options[OptReadRds])
+		read_rds_from_fd(fd);
+
+	close(fd);
+	std::exit(app_result);
+}

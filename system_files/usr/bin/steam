@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Compatibility shim: Steam / scripts expect `steam` on PATH.
+exec /usr/libexec/steamos-ubuntu/launch-steam "$@"

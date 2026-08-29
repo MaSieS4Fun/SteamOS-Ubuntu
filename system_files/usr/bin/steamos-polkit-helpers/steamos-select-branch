@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Steam OS branch hook — no elevation. Preference is stored under a path
+# writable by user steam (pkexec fails under gamescope → "Updater check error: 40").
+set -euo pipefail
+exec /usr/bin/steamos-select-branch "$@"

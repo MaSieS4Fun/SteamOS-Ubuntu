@@ -1,0 +1,4 @@
+# Handheld: only OOBE helpers may use sudo without a password (greetd has no TTY).
+# Do NOT grant NOPASSWD:ALL — that breaks Desktop (sudo never asks, kate/pkexec UX).
+Defaults:steam !requiretty
+steam ALL=(root) NOPASSWD: /usr/bin/steamos-polkit-helpers/steamos-set-timezone, /usr/bin/steamos-polkit-helpers/steamos-select-branch, /usr/bin/timedatectl

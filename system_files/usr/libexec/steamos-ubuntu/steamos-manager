@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""Minimal com.steampowered.SteamOSManager1 for Steam Deck Gamepad UI on Ubuntu.
+
+SteamOSManager1 stub with static perf/GPU stubs.
+"""
+from __future__ import annotations
+
+import os
+import signal
+import subprocess
+import sys
+import warnings
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import GLib, Gio
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+BUS_NAME = "com.steampowered.SteamOSManager1"
+OBJECT_PATH = "/com/steampowered/SteamOSManager1"
+IFACE_MANAGER = "com.steampowered.SteamOSManager1.Manager2"
+IFACE_PROFILE = "com.steampowered.SteamOSManager1.PerformanceProfile1"
+IFACE_GPU = "com.steampowered.SteamOSManager1.GpuPerformanceLevel1"
+IFACE_SESSION = "com.steampowered.SteamOSManager1.SessionManagement1"
+IFACE_OBJECT_MANAGER = "org.freedesktop.DBus.ObjectManager"
+
+ROOT_XML = f"""
+<node>
+  <interface name="{IFACE_OBJECT_MANAGER}">
+    <method name="GetManagedObjects">
+      <arg type="a{{oa{{sa{{sv}}}}}}" name="objects" direction="out"/>
+    </method>
+    <signal name="InterfacesAdded">
+      <arg type="o" name="object"/>
+      <arg type="a{{sa{{sv}}}}" name="interfaces"/>
+    </signal>
+    <signal name="InterfacesRemoved">
+      <arg type="o" name="object"/>
+      <arg type="as" name="interfaces"/>
+    </signal>
+  </interface>
+</node>
+"""
+
+NODE_XML = f"""
+<node>
+  <interface name="{IFACE_MANAGER}">
+    <method name="ReloadConfig"/>
+    <property name="DeviceModel" type="(ss)" access="read"/>
+  </interface>
+  <interface name="{IFACE_SESSION}">
+    <method name="SwitchToDesktopMode"/>
+    <method name="SwitchToGameMode"/>
+    <method name="SwitchToLoginMode">
+      <arg type="s" name="type" direction="in"/>
+    </method>
+    <method name="SwitchToDesktopSession">
+      <arg type="s" name="session" direction="in"/>
+    </method>
+    <method name="ValidDesktopSessions">
+      <arg type="as" name="sessions" direction="out"/>
+    </method>
+    <method name="CleanTemporarySessions"/>
+    <property name="DefaultDesktopSession" type="s" access="readwrite"/>
+    <property name="DefaultLoginMode" type="s" access="readwrite"/>
+  </interface>
+  <interface name="{IFACE_PROFILE}">
+    <property name="AvailablePerformanceProfiles" type="as" access="read"/>
+    <property name="PerformanceProfile" type="s" access="readwrite"/>
+    <property name="SuggestedDefaultPerformanceProfile" type="s" access="read"/>
+  </interface>
+  <interface name="{IFACE_GPU}">
+    <property name="AvailableGpuPerformanceLevels" type="as" access="read"/>
+    <property name="GpuPerformanceLevel" type="s" access="readwrite"/>
+    <property name="ManualGpuClock" type="u" access="readwrite"/>
+    <property name="ManualGpuClockMin" type="u" access="read"/>
+    <property name="ManualGpuClockMax" type="u" access="read"/>
+  </interface>
+</node>
+"""
+
+SESSION_FILE = "/var/lib/steamos-ubuntu/session"
+
+
+class SteamOSManager:
+    def __init__(self):
+        self.device_id = os.environ.get("STEAMOS_DEVICE_ID", "ayn-odin-2")
+        self.device_name = os.environ.get("STEAMOS_DEVICE_NAME", "AYN Odin 2")
+        self.default_login_mode = "game"
+        self.default_desktop_session = "plasma.desktop"
+        self.valid_desktop_sessions = ("plasma.desktop",)
+        self.performance_profile = "balanced"
+        self.gpu_level = "auto"
+        self.manual_gpu_clock = 0
+        self.connection = None
+        self.root_node = None
+        self.node = None
+
+    def managed_objects(self):
+        objects = {}
+        for iface in self.node.interfaces:
+            props = {}
+            for prop in iface.properties:
+                value = self.get_property(iface.name, prop.name)
+                if value is not None:
+                    props[prop.name] = value
+            objects.setdefault(OBJECT_PATH, {})[iface.name] = props
+        return objects
+
+    def emit_properties(self, iface, changed):
+        self.connection.emit_signal(
+            None,
+            OBJECT_PATH,
+            "org.freedesktop.DBus.Properties",
+            "PropertiesChanged",
+            GLib.Variant("(sa{sv}as)", (iface, changed, [])),
+        )
+
+    def get_property(self, iface, prop):
+        if iface == IFACE_MANAGER and prop == "DeviceModel":
+            return GLib.Variant("(ss)", (self.device_id, self.device_name))
+        if iface == IFACE_SESSION:
+            if prop == "DefaultDesktopSession":
+                return GLib.Variant("s", self.default_desktop_session)
+            if prop == "DefaultLoginMode":
+                return GLib.Variant("s", self.default_login_mode)
+        if iface == IFACE_PROFILE:
+            if prop == "AvailablePerformanceProfiles":
+                # Must be a list of str — nested (["a","b"],) makes GLib throw and Steam waits ~25–40s.
+                return GLib.Variant("as", ["power", "balanced", "performance"])
+            if prop == "PerformanceProfile":
+                return GLib.Variant("s", self.performance_profile)
+            if prop == "SuggestedDefaultPerformanceProfile":
+                return GLib.Variant("s", "balanced")
+        if iface == IFACE_GPU:
+            if prop == "AvailableGpuPerformanceLevels":
+                return GLib.Variant("as", ["auto", "manual"])
+            if prop == "GpuPerformanceLevel":
+                return GLib.Variant("s", self.gpu_level)
+            if prop == "ManualGpuClock":
+                return GLib.Variant("u", self.manual_gpu_clock)
+            if prop == "ManualGpuClockMin":
+                return GLib.Variant("u", 200)
+            if prop == "ManualGpuClockMax":
+                return GLib.Variant("u", 800)
+        return None
+
+    def set_property(self, iface, prop, value):
+        if iface == IFACE_PROFILE and prop == "PerformanceProfile":
+            self.performance_profile = value.get_string()
+            self.emit_properties(iface, {prop: value})
+            return
+        if iface == IFACE_GPU and prop == "GpuPerformanceLevel":
+            self.gpu_level = value.get_string()
+            self.emit_properties(iface, {prop: value})
+            return
+        if iface == IFACE_GPU and prop == "ManualGpuClock":
+            self.manual_gpu_clock = value.get_uint32()
+            self.emit_properties(iface, {prop: value})
+            return
+        if iface == IFACE_SESSION and prop == "DefaultDesktopSession":
+            self.default_desktop_session = value.get_string()
+            self.emit_properties(iface, {prop: value})
+            return
+        if iface == IFACE_SESSION and prop == "DefaultLoginMode":
+            self.default_login_mode = value.get_string()
+            self.emit_properties(iface, {prop: value})
+            return
+        raise KeyError(prop)
+
+    def write_session(self, name: str):
+        os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
+        try:
+            with open(SESSION_FILE, "w", encoding="utf-8") as fh:
+                fh.write(name + "\n")
+            return
+        except OSError as exc:
+            # Directory often root-owned on first images — fall back to helper.
+            print(f"steamos-manager: direct write {SESSION_FILE} failed: {exc}", flush=True)
+        map_name = "plasma.desktop" if name in ("plasma", "desktop") else "gamescope-session.desktop"
+        for cmd in (
+            ["bash", "/usr/lib/steamos/steam-set-session", map_name],
+            ["pkexec", "bash", "/usr/lib/steamos/steam-set-session", map_name],
+        ):
+            try:
+                subprocess.check_call(cmd, timeout=15)
+                return
+            except (OSError, subprocess.SubprocessError) as exc:
+                print(f"steamos-manager: {' '.join(cmd)} failed: {exc}", flush=True)
+        raise PermissionError(f"cannot write {SESSION_FILE}")
+
+    def switch_session(self, target: str):
+        """Deck-like switch: persist session then shut down Steam / logout desktop."""
+        if target == "desktop":
+            mode = "plasma"
+            self.write_session("plasma")
+        else:
+            mode = "gamescope"
+            self.write_session("gamescope-session")
+        try:
+            subprocess.Popen(
+                ["/usr/bin/steamos-session-select", mode],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            print(f"steamos-manager: session-select failed: {exc}", flush=True)
+
+    def handle_root_method_call(self, _conn, _sender, _path, iface, method, _params, invocation):
+        if iface == IFACE_OBJECT_MANAGER and method == "GetManagedObjects":
+            try:
+                invocation.return_value(
+                    GLib.Variant("(a{oa{sa{sv}}})", (self.managed_objects(),))
+                )
+            except Exception as exc:
+                invocation.return_dbus_error(f"{BUS_NAME}.Error.Internal", str(exc))
+            return
+        invocation.return_dbus_error(f"{BUS_NAME}.Error.UnknownMethod", method)
+
+    def handle_method_call(self, _conn, _sender, _path, iface, method, params, invocation):
+        if iface == IFACE_MANAGER and method == "ReloadConfig":
+            invocation.return_value(None)
+            return
+        if iface == IFACE_SESSION:
+            if method == "ValidDesktopSessions":
+                invocation.return_value(GLib.Variant("(as)", (list(self.valid_desktop_sessions),)))
+                return
+            if method in ("SwitchToDesktopMode", "SwitchToDesktopSession"):
+                try:
+                    self.switch_session("desktop")
+                except Exception as exc:
+                    invocation.return_dbus_error(f"{BUS_NAME}.Error.SwitchFailed", str(exc))
+                    return
+                invocation.return_value(None)
+                return
+            if method == "SwitchToGameMode":
+                try:
+                    self.switch_session("gamemode")
+                except Exception as exc:
+                    invocation.return_dbus_error(f"{BUS_NAME}.Error.SwitchFailed", str(exc))
+                    return
+                invocation.return_value(None)
+                return
+            if method == "SwitchToLoginMode":
+                try:
+                    values = params.unpack()
+                    mode = values[0] if values else self.default_login_mode
+                    self.switch_session("desktop" if mode == "desktop" else "gamemode")
+                except Exception as exc:
+                    invocation.return_dbus_error(f"{BUS_NAME}.Error.SwitchFailed", str(exc))
+                    return
+                invocation.return_value(None)
+                return
+            if method == "CleanTemporarySessions":
+                invocation.return_value(None)
+                return
+        invocation.return_dbus_error(f"{BUS_NAME}.Error.UnknownMethod", method)
+
+    def handle_get_property(self, _conn, _sender, _path, iface, prop):
+        try:
+            return self.get_property(iface, prop)
+        except Exception:
+            return None
+
+    def handle_set_property(self, _conn, _sender, _path, iface, prop, value):
+        try:
+            self.set_property(iface, prop, value)
+            return True
+        except Exception as exc:
+            print(f"steamos-manager: set {iface}.{prop} failed: {exc}", file=sys.stderr)
+            return False
+
+    def register(self, connection):
+        self.connection = connection
+        self.root_node = Gio.DBusNodeInfo.new_for_xml(ROOT_XML)
+        self.node = Gio.DBusNodeInfo.new_for_xml(NODE_XML)
+        connection.register_object(
+            "/",
+            self.root_node.interfaces[0],
+            self.handle_root_method_call,
+            None,
+            None,
+        )
+        for iface in self.node.interfaces:
+            connection.register_object(
+                OBJECT_PATH,
+                iface,
+                self.handle_method_call,
+                self.handle_get_property,
+                self.handle_set_property,
+            )
+
+
+def main():
+    loop = GLib.MainLoop()
+    manager = SteamOSManager()
+
+    def bus_acquired(connection, _name):
+        manager.register(connection)
+        print("steamos-manager: acquired", BUS_NAME, flush=True)
+
+    def name_lost(_connection, _name):
+        loop.quit()
+
+    owner_id = Gio.bus_own_name(
+        Gio.BusType.SESSION,
+        BUS_NAME,
+        Gio.BusNameOwnerFlags.NONE,
+        bus_acquired,
+        None,
+        name_lost,
+    )
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: loop.quit())
+    try:
+        loop.run()
+    finally:
+        Gio.bus_unown_name(owner_id)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,59 @@
+%PDF-1.0
+%¿÷¢þ
+%QDF-1.0
+
+%% Original object ID: 1 0
+1 0 obj
+<<
+  /AA <<
+    /WC <<
+      /JS (app.alert\("http://www.corkami.com \(Closing\)"\);)
+      /S /
+    >>
+  >>
+  /OpenAction <<
+    /JS (app.alert\("http://www.corkami.com \(Open Action\)"\);)
+    /S /JavaScript
+  >>
+  /Pages 2 0 R
+>>
+endobj
+
+%% Original object ID: 2 0
+2 0 obj
+<<
+  /Count 1
+  /Kids [
+    3 0 R
+  ]
+>>
+endobj
+
+%% Page 1
+%% Original object ID: 3 0
+3 0 obj
+<<
+  /AA <<
+    /O <<
+      /JS (app.alert\("http://www.corkami.com \(Additional Action\)"\);)
+      /S /JavaScript
+    >>
+  >>
+  /Parent 2 0 R
+>>
+endobj
+
+xref
+0 4
+0000000000 65535 f 
+0000000052 00000 n 
+0000000328 00000 n 
+0000000422 00000 n 
+trailer <<
+  /Root 1 0 R
+  /Size 4
+  /ID [<a35f6bb80bdac8e3c95c298f6177b175><a35f6bb80bdac8e3c95c298f6177b175>]
+>>
+startxref
+585
+%%EOF

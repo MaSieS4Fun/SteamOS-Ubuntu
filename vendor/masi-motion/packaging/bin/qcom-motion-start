@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# AYN Thor / Odin 2 — qcom-motion launcher for systemd (evdev IMU + optional DSU).
+set -euo pipefail
+
+SENSORS_READY="/run/masi/qcom-sensors.ready"
+MOTION_BIN="/usr/bin/qcom-motion"
+MOTION_READY="/run/masi/qcom-motion.ready"
+LOG_DIR="/var/log/masi"
+
+_ayn_motion_device() {
+	[[ -f /proc/device-tree/compatible ]] || return 1
+	local compatible
+	compatible=$(tr '\000' '\n' < /proc/device-tree/compatible)
+	echo "${compatible}" | grep -qxE 'ayn,(thor|odin2)'
+}
+
+if ! _ayn_motion_device; then
+	exit 0
+fi
+
+if [[ ! -x "${MOTION_BIN}" ]]; then
+	if [[ -x /usr/bin/batocera-qcom-motion ]]; then
+		MOTION_BIN=/usr/bin/batocera-qcom-motion
+	else
+		echo "qcom-motion not found — run vendor/masi-motion/install.sh first" >&2
+		exit 1
+	fi
+fi
+
+mkdir -p "${LOG_DIR}" /run/masi
+
+i=0
+while [[ ! -f "${SENSORS_READY}" && "${i}" -lt 600 ]]; do
+	sleep 0.5
+	i=$((i + 1))
+done
+
+if [[ ! -f "${SENSORS_READY}" ]]; then
+	echo "Qualcomm sensors stack did not become ready (${SENSORS_READY})" >&2
+	exit 1
+fi
+
+rm -f "${MOTION_READY}"
+exec "${MOTION_BIN}"

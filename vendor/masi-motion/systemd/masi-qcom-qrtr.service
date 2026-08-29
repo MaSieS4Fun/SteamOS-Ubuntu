@@ -1,0 +1,15 @@
+[Unit]
+Description=Qualcomm QRTR nameserver (AYN Thor/Odin 2)
+After=network-pre.target
+Before=masi-qcom-sensors.service
+ConditionPathExists=/proc/device-tree/compatible
+ConditionPathExists=/usr/bin/qrtr-ns
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/qrtr-ns
+Restart=no
+SuccessExitStatus=0
+
+[Install]
+WantedBy=multi-user.target

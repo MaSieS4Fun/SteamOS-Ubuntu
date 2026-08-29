@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ShadowBlip/InputPlumber/main/rootfs/usr/share/inputplumber/schema/composite_device_v1.json
+# AYANEO Pocket EVO / DS / S 2K (SM8550) → xb360.
+version: 1
+kind: CompositeDevice
+name: AYANEO Layout
+
+matches:
+  - udev:
+      sys_path: /sys/firmware/devicetree/base
+      attributes:
+        - name: model
+          value: AYANEO Pocket EVO
+  - udev:
+      sys_path: /sys/firmware/devicetree/base
+      attributes:
+        - name: model
+          value: AYANEO Pocket DS
+  - udev:
+      sys_path: /sys/firmware/devicetree/base
+      attributes:
+        - name: model
+          value: AYANEO Pocket S 2K
+
+single_source: false
+
+source_devices:
+  - group: gamepad
+    evdev:
+      vendor_id: "1c4f"
+      product_id: "0002"
+      handler: event*
+    capability_map_id: ayaneo_mcu_xbox
+  - group: gamepad
+    evdev:
+      vendor_id: "045e"
+      product_id: "028e"
+      handler: event*
+    capability_map_id: ayaneo_mcu_xbox
+
+options:
+  auto_manage: true
+
+target_devices:
+  - xb360
+  - keyboard

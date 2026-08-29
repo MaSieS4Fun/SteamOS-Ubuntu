@@ -1,0 +1,529 @@
+#!/usr/bin/env bash
+# SteamOS-Ubuntu Gaming Mode — ChimeraOS gamescope-session-plus model
+#
+# Critical: use gamescope -R (ready socket) + --steam, then start Steam as a
+# sibling with DISPLAY/GAMESCOPE_WAYLAND_DISPLAY from the socket.
+# Embedded `gamescope -e -- steam` leaves CEF at "Starting message loop" and
+# Steam hits CSteamEngine::BMainLoop stall (no CreateBrowser / no OOBE).
+#
+# Do not use set -e: greetd treats any early exit as "greeter failed".
+# Persistent log under /var/log when the session user can write it.
+# Otherwise fall back to XDG_RUNTIME_DIR / tmp so we still get a dump.
+# /var/tmp/steamos-session.log is a symlink to whichever file won.
+pick_session_log() {
+  local candidate
+  for candidate in /var/log/steamos-session.log \
+                   "${XDG_RUNTIME_DIR:-/tmp}/steamos-session.log" \
+                   /tmp/steamos-session.log; do
+    mkdir -p "$(dirname "$candidate")" 2>/dev/null || true
+    if touch "$candidate" 2>/dev/null && chmod u+w "$candidate" 2>/dev/null; then
+      chmod 666 "$candidate" 2>/dev/null || true
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo /dev/null
+}
+session_debug() { [[ "${STEAMOS_SESSION_DEBUG:-0}" == "1" ]] && echo "$@"; }
+
+LOG="$(pick_session_log)"
+ln -sfn "$LOG" /var/tmp/steamos-session.log 2>/dev/null || true
+exec >>"$LOG" 2>&1 || true
+
+echo "===== $(date -Iseconds) gamescope-session ====="
+
+# Ensure deck-uhid + IMU for Steam (desktop may have left DSU/motion off)
+if [[ -x /usr/bin/gyro-desktop-gamescope ]]; then
+  session_debug "gyro-desktop-gamescope: applying Gaming Mode pad"
+  sudo -n /usr/bin/gyro-desktop-gamescope 2>&1 || /usr/bin/gyro-desktop-gamescope 2>&1 || true
+fi
+
+export HOME="${HOME:-/home/steam}"
+export USER="${USER:-steam}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.config/gamescope" "$HOME/.config/steamos-ubuntu" \
+  "$HOME/.config/MangoHud"
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+
+# Compositor = Wayland (GAMESCOPE_WAYLAND_DISPLAY). Steam UI paints via Xwayland
+# (DISPLAY + QT_QPA_PLATFORM=xcb). Do NOT force XDG_SESSION_TYPE=x11 — that pushes
+# Steam SystemDisplayManager onto the broken X11/XRR path instead of wayland: modeset.
+# ChimeraOS gamescope-session-plus leaves XDG_SESSION_TYPE unset.
+unset XDG_SESSION_TYPE || true
+export XDG_CURRENT_DESKTOP=gamescope
+export XDG_SESSION_DESKTOP=gamescope-session
+export DESKTOP_SESSION=gamescope-session
+export STEAMOS_SESSION=1
+export LIBSEAT_BACKEND="${LIBSEAT_BACKEND:-seatd}"
+export PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
+export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/lib/aarch64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# Vendor Mesa Turnip
+export VK_DRIVER_FILES="${VK_DRIVER_FILES:-/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json}"
+export VK_ICD_FILENAMES="${VK_ICD_FILENAMES:-/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json}"
+
+# Steam / gamescope Deck env — mirror Steam Deck session env (+ volume-keys helper)
+export SteamDeck=1
+export STEAM_MULTIPLE_XWAYLANDS=1
+export STEAM_GAMESCOPE_HDR_SUPPORTED=0
+# Odin gpio-keys: with Wayland DM, Steam shows volume OSD but often does not
+# move PipeWire — keep Steam handler off; volume-keys grabs the rocker → wpctl.
+export STEAM_ENABLE_VOLUME_HANDLER=0
+export STEAM_DISABLE_AUDIO_DEVICE_SWITCHING=1
+export SRT_URLOPEN_PREFER_STEAM=1
+export ENABLE_GAMESCOPE_WSI=1
+export SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0
+export SDL_VIDEO_X11_DGAMOUSE=0
+export STEAM_USE_SYSTEM_HIBERNATION=0
+export SDL_GAMECONTROLLERCONFIG_FILE="${SDL_GAMECONTROLLERCONFIG_FILE:-/etc/sdl2/qcom-gamecontrollerdb.txt}"
+export QT_QPA_PLATFORM=xcb
+export QT_IM_MODULE=steam
+export GTK_IM_MODULE=Steam
+export vk_xwayland_wait_ready=false
+export GAMESCOPE_DISABLE_ASYNC_FLIPS=1
+export GAMESCOPE_NV12_COLORSPACE=k_EStreamColorspace_BT601
+export GAMESCOPE_USE_ROTATION_SHADER="${GAMESCOPE_USE_ROTATION_SHADER:-1}"
+export GAMESCOPE_FORCE_INTERNAL="${GAMESCOPE_FORCE_INTERNAL:-1}"
+
+# ChimeraOS gamescope-session-steam (no local QAM personalizations)
+export STEAM_USE_MANGOAPP=1
+export STEAM_MANGOAPP_PRESETS_SUPPORTED=1
+export STEAM_MANGOAPP_HORIZONTAL_SUPPORTED=1
+export STEAM_DISABLE_MANGOAPP_ATOM_WORKAROUND=1
+export STEAM_GAMESCOPE_VRR_SUPPORTED=1
+export STEAM_GAMESCOPE_HAS_TEARING_SUPPORT=1
+export STEAM_GAMESCOPE_TEARING_SUPPORTED=1
+export STEAM_GAMESCOPE_DYNAMIC_FPSLIMITER=1
+export STEAM_GAMESCOPE_NIS_SUPPORTED=1
+export STEAM_GAMESCOPE_FANCY_SCALING_SUPPORT=1
+export STEAM_USE_DYNAMIC_VRS=1
+export STEAM_GAMESCOPE_COLOR_MANAGED=1
+export STEAM_GAMESCOPE_VIRTUAL_WHITE=1
+export STEAM_ALLOW_DRIVE_UNMOUNT=1
+export STEAM_ALLOW_DRIVE_ADOPT=1
+
+unset WAYLAND_DISPLAY DISPLAY XAUTHORITY || true
+
+GAMESCOPE_BIN=/usr/local/bin/gamescope
+[[ -x "$GAMESCOPE_BIN" ]] || GAMESCOPE_BIN="$(command -v gamescope || true)"
+if [[ -z "$GAMESCOPE_BIN" || ! -x "$GAMESCOPE_BIN" ]]; then
+  echo "ERROR: gamescope binary missing"
+  sleep 30
+  exit 1
+fi
+
+LAUNCH_STEAM=/usr/libexec/steamos-ubuntu/launch-steam
+STEAM_ROOT="${HOME}/.local/share/Steam"
+
+if [[ "${STEAMOS_SESSION_DEBUG:-0}" == "1" ]]; then
+  echo "gamescope:"; "$GAMESCOPE_BIN" --help 2>&1 | head -3 || true
+  echo "seatd:"; ls -la /run/seatd.sock 2>&1 || true
+  echo "dri:"; ls -la /dev/dri 2>&1 || true
+  echo "beta:"; cat "${STEAM_ROOT}/package/beta" 2>&1 || true
+  echo "steamui:"; ls -la "${STEAM_ROOT}/steamrtarm64/steamui.so" 2>&1 || true
+  echo "launch-steam:"; ls -la "$LAUNCH_STEAM" 2>&1 || true
+fi
+
+# Portrait panel modes are often 1080x1920; nested Steam size is landscape after
+# DRM/panel orientation (from DTB rotation=90|270). Do NOT force orientation —
+# gamescope AUTO reads connector "panel orientation" so Odin2 (90° CCW) vs
+# Portal/RP6 (270° / 90° CW) stay correct from the device DTB alone.
+# Pick the largest connected DSI (Thor main is DSI-2; Odin/RP6 is DSI-1).
+PANEL_W=1080
+PANEL_H=1920
+OUTPUT="${GAMESCOPE_OUTPUT:-}"
+if [[ -z "$OUTPUT" ]]; then
+  best_area=0
+  for card in /sys/class/drm/card*-DSI-* /sys/class/drm/card*-eDP-*; do
+    [[ -e "$card/status" ]] || continue
+    [[ "$(cat "$card/status" 2>/dev/null || true)" == connected ]] || continue
+    base="$(basename "$card")"
+    name="${base#*-}"
+    mode="$(head -1 "$card/modes" 2>/dev/null || true)"
+    if [[ "$mode" =~ ^([0-9]+)x([0-9]+) ]]; then
+      w="${BASH_REMATCH[1]}"
+      h="${BASH_REMATCH[2]}"
+      area=$((w * h))
+      if (( area > best_area )); then
+        best_area=$area
+        OUTPUT="$name"
+        PANEL_W="$w"
+        PANEL_H="$h"
+      fi
+    fi
+  done
+  OUTPUT="${OUTPUT:-DSI-1}"
+elif [[ -r "/sys/class/drm/card0-${OUTPUT}/modes" ]]; then
+  mode="$(head -1 "/sys/class/drm/card0-${OUTPUT}/modes" || true)"
+  if [[ "$mode" =~ ^([0-9]+)x([0-9]+) ]]; then
+    PANEL_W="${BASH_REMATCH[1]}"
+    PANEL_H="${BASH_REMATCH[2]}"
+  fi
+fi
+session_debug "internal output=$OUTPUT panel=${PANEL_W}x${PANEL_H} (HDMI/DP ignored)"
+# Optional override only for debugging: GAMESCOPE_FORCE_ORIENTATION=left|right|normal
+FORCE_ORIENTATION="${GAMESCOPE_FORCE_ORIENTATION:-}"
+if [[ "$PANEL_H" -gt "$PANEL_W" ]]; then
+  W="${GAMESCOPE_WIDTH:-$PANEL_H}"
+  H="${GAMESCOPE_HEIGHT:-$PANEL_W}"
+else
+  W="${GAMESCOPE_WIDTH:-$PANEL_W}"
+  H="${GAMESCOPE_HEIGHT:-$PANEL_H}"
+fi
+REFRESH_HZ="${GAMESCOPE_REFRESH:-60}"
+MODE_FILE="${GAMESCOPE_MODE_SAVE_FILE:-$HOME/.config/gamescope/modes.cfg}"
+mkdir -p "$(dirname "$MODE_FILE")"
+touch "$MODE_FILE"
+export GAMESCOPE_MODE_SAVE_FILE="$MODE_FILE"
+# Odin 2 session uses 177x100 (not the connector's raw mm)
+export GAMESCOPE_FAKE_OUTPUT_MM="${GAMESCOPE_FAKE_OUTPUT_MM:-177x100}"
+
+# Gaming overlay — fixed user configs (QAM writes preset= here):
+#   ~/.config/MangoHud/steam/{MangoHud.conf,presets.conf}
+SYS_MANGO="/usr/share/sm8550-steamos/MangoHud/steam"
+USER_MANGO="$HOME/.config/MangoHud/steam"
+STEAM_MANGO_FALLBACK="${STEAM_ROOT}/config/mangohud.conf"
+mkdir -p "$USER_MANGO" "${STEAM_ROOT}/config"
+if [[ ! -f "${USER_MANGO}/presets.conf" && -f "${SYS_MANGO}/presets.conf" ]]; then
+  install -D -m 0644 "${SYS_MANGO}/presets.conf" "${USER_MANGO}/presets.conf"
+fi
+if [[ ! -f "${USER_MANGO}/MangoHud.conf" && -f "${SYS_MANGO}/MangoHud.conf" ]]; then
+  install -D -m 0644 "${SYS_MANGO}/MangoHud.conf" "${USER_MANGO}/MangoHud.conf"
+fi
+if [[ ! -f "${USER_MANGO}/MangoHud.conf" ]]; then
+  printf '%s\n' 'control=mangoapp' 'preset=0' >"${USER_MANGO}/MangoHud.conf"
+fi
+# Real file only (no symlink to desktop conf)
+if [[ -L "${USER_MANGO}/MangoHud.conf" ]]; then
+  cp -aL "${USER_MANGO}/MangoHud.conf" "${USER_MANGO}/MangoHud.conf.real" 2>/dev/null \
+    || install -D -m 0644 "${SYS_MANGO}/MangoHud.conf" "${USER_MANGO}/MangoHud.conf.real"
+  mv -f "${USER_MANGO}/MangoHud.conf.real" "${USER_MANGO}/MangoHud.conf"
+fi
+# Force safe overlay config (Steam QAM must not hook CEF via control=mangohud).
+if grep -qE '^(control=mangohud|nis_steam_sharpness|fsr_steam_sharpness|no_display)' \
+    "${USER_MANGO}/MangoHud.conf" 2>/dev/null; then
+  printf '%s\n' 'control=mangoapp' 'preset=0' >"${USER_MANGO}/MangoHud.conf"
+fi
+chmod 0644 "${USER_MANGO}/MangoHud.conf" 2>/dev/null || true
+if [[ -e "$STEAM_MANGO_FALLBACK" && ! "$STEAM_MANGO_FALLBACK" -ef "${USER_MANGO}/MangoHud.conf" ]]; then
+  rm -f "$STEAM_MANGO_FALLBACK"
+fi
+if [[ ! -e "$STEAM_MANGO_FALLBACK" ]]; then
+  ln "${USER_MANGO}/MangoHud.conf" "$STEAM_MANGO_FALLBACK" 2>/dev/null \
+    || cp -a "${USER_MANGO}/MangoHud.conf" "$STEAM_MANGO_FALLBACK"
+fi
+# Do NOT export MANGOHUD_* globally — only mangoapp subprocess below.
+# Chimera still uses temp files for VRS + fps limiter
+export RADV_FORCE_VRS_CONFIG_FILE
+RADV_FORCE_VRS_CONFIG_FILE="$(mktemp /tmp/radv_vrs.XXXXXXXX)"
+export GAMESCOPE_LIMITER_FILE
+GAMESCOPE_LIMITER_FILE="$(mktemp /tmp/gamescope-limiter.XXXXXXXX)"
+echo "1x1" >"$RADV_FORCE_VRS_CONFIG_FILE"
+session_debug "mangoapp: CONFIGFILE=${USER_MANGO}/MangoHud.conf PRESETS=${USER_MANGO}/presets.conf"
+
+if [[ ! -x "$LAUNCH_STEAM" ]]; then
+  echo "ERROR: missing $LAUNCH_STEAM"
+  sleep 30
+  exit 1
+fi
+if [[ ! -x "${STEAM_ROOT}/steamrtarm64/steam" ]]; then
+  echo "ERROR: SteamARM not baked — rebuild image with Steam bootstrap"
+  sleep 60
+  exit 1
+fi
+if [[ ! -f "${STEAM_ROOT}/steamrtarm64/steamui.so" ]]; then
+  echo "ERROR: steamui.so missing — Deck OOBE incomplete bake"
+  sleep 60
+  exit 1
+fi
+
+# Steam client flags — Steam Deck CLIENTCMD.
+# Optional override: /var/lib/steamos-ubuntu/steam-mode = oobe|minimal|bare
+STEAM_MODE_FILE=/var/lib/steamos-ubuntu/steam-mode
+STEAM_CEF_MODE_FILE=/var/lib/steamos-ubuntu/steam-cef-mode
+STEAM_MODE=deck
+[[ -f "$STEAM_MODE_FILE" ]] && STEAM_MODE="$(tr -d '[:space:]' < "$STEAM_MODE_FILE")"
+STEAM_CEF_MODE="${STEAM_CEF_MODE:-}"
+[[ -f "$STEAM_CEF_MODE_FILE" ]] && STEAM_CEF_MODE="$(tr -d '[:space:]' < "$STEAM_CEF_MODE_FILE")"
+CEF_FLAGS=()
+case "${STEAM_CEF_MODE:-}" in
+  software|disable-gpu|cpu)
+    CEF_FLAGS+=( -cef-disable-gpu )
+    ;;
+esac
+case "$STEAM_MODE" in
+  oobe|steamos)
+    # ARM: -steamos OOBE flags make Steam init SystemDisplayManager as X11 (broken
+    # on this handheld). First-boot wizard still works with deck CLIENTCMD when
+    # registry/loginusers are clean — same as finalize / el-bueno image bake.
+    STEAM_MODE=deck
+    CLIENT=(
+      "$LAUNCH_STEAM"
+      -gamepadui
+      -steamos3
+      -steampal
+      -steamdeck
+      -noverifyfiles
+      -noshaders
+      "${CEF_FLAGS[@]}"
+    )
+    ;;
+  minimal)
+    CLIENT=("$LAUNCH_STEAM" -steamdeck "${CEF_FLAGS[@]}")
+    ;;
+  bare)
+    CLIENT=("$LAUNCH_STEAM" "${CEF_FLAGS[@]}")
+    ;;
+  *)
+    STEAM_MODE=deck
+    CLIENT=(
+      "$LAUNCH_STEAM"
+      -gamepadui
+      -steamos3
+      -steampal
+      -steamdeck
+      -noverifyfiles
+      -noshaders
+      "${CEF_FLAGS[@]}"
+    )
+    ;;
+esac
+session_debug "steam-mode=$STEAM_MODE → ${CLIENT[*]}"
+[[ "${#CEF_FLAGS[@]}" -gt 0 ]] && session_debug "steam-cef-mode=${STEAM_CEF_MODE} → ${CEF_FLAGS[*]}"
+
+# Bring SteamOSManager up on the session bus *before* Steam (avoids GDBus timeout).
+# Decky is ensured later, right before Steam — avoid an early PluginLoader restart
+# that races DRM with gamescope (and with Plasma nested gamescope -e).
+if [[ -x /usr/libexec/steamos-ubuntu/steamos-manager ]] && command -v dbus-send >/dev/null 2>&1; then
+  if ! dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply \
+      /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
+      string:com.steampowered.SteamOSManager1 2>/dev/null | grep -q 'boolean true'; then
+    session_debug "pre-start steamos-manager"
+    /usr/libexec/steamos-ubuntu/steamos-manager &
+    disown || true
+  fi
+fi
+
+if ! command -v xwininfo >/dev/null 2>&1; then
+  echo "WARNING: xwininfo missing (install x11-utils) — Steam may fatal after BMainLoop stall"
+fi
+
+# Break focus deadlock: with --steam, gamescope only focuses windows that have
+# STEAM_GAME set. If Steam never tags its stubs, FOCUSED_APP stays empty and
+# Gamepad UI never CreateBrowsers (black screen + BMainLoop stall).
+# AppID 769 = Steam client / Big Picture (Deck Gamepad UI).
+force_steam_game_atoms() {
+  command -v xprop >/dev/null 2>&1 || return 0
+  command -v xwininfo >/dev/null 2>&1 || return 0
+  local ids
+  ids="$(xwininfo -root -tree 2>/dev/null | awk '/[Ss]team/{
+    if (match($0, /0x[0-9a-fA-F]+/)) print substr($0, RSTART, RLENGTH)
+  }' | sort -u)"
+  local id
+  for id in $ids; do
+    [[ -n "$id" ]] || continue
+    if ! xprop -id "$id" STEAM_GAME 2>/dev/null | grep -q 'STEAM_GAME(CARDINAL)'; then
+      xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME 769 2>/dev/null || true
+      xprop -id "$id" -f STEAM_OVERLAY 32c -set STEAM_OVERLAY 0 2>/dev/null || true
+      xprop -id "$id" -f STEAM_BIGPICTURE 32c -set STEAM_BIGPICTURE 1 2>/dev/null || true
+      session_debug "force STEAM_GAME=769 STEAM_BIGPICTURE=1 on $id"
+    fi
+  done
+}
+
+# OOBE/client update ends with Steam exit + "client restart required".
+# gamescope --steam usually dies with Steam; the session relies on the display
+# manager to bring the session back. We restart gamescope+Steam in-process
+# so greetd never falls through to a TTY between update and login.
+steam_rc=1
+max_cycles=8
+short_fail=0
+for cycle in $(seq 1 "$max_cycles"); do
+  session_debug "===== session cycle $cycle/$max_cycles ====="
+  if [[ ! -f /run/steamos-ubuntu/panel-hold.active ]]; then
+    systemctl start steamos-panel-hold.service 2>/dev/null || true
+  fi
+
+  tmpdir="$(mktemp -d -p "$XDG_RUNTIME_DIR" gamescope.XXXXXX)"
+  socket="${tmpdir}/startup.socket"
+  stats="${tmpdir}/stats.pipe"
+  mkfifo -- "$socket" "$stats"
+  export GAMESCOPE_STATS="$stats"
+
+  session_debug "exec gamescope -R socket --steam → then ${CLIENT[*]}"
+  GS_ARGS=(
+    -W "$W" -H "$H" -r "$REFRESH_HZ"
+    --xwayland-count 2
+    --backend drm
+    --force-windows-fullscreen
+    --scaler fit
+    --filter linear
+    --force-composition
+    -O "$OUTPUT"
+    --steam
+    -R "$socket"
+    -T "$stats"
+  )
+  # Trust DRM panel orientation from device DTB unless explicitly overridden.
+  if [[ -n "${FORCE_ORIENTATION}" ]]; then
+    GS_ARGS+=( --force-orientation "$FORCE_ORIENTATION" )
+    session_debug "NOTE: forcing orientation=${FORCE_ORIENTATION} (debug override)"
+  fi
+  # Do NOT use gamescope --mangoapp. Run stock mangoapp as sibling
+  # after the ready socket so it shares MANGOHUD_CONFIGFILE with Steam.
+  # (gamescope --mangoapp only setenv inside gamescope; Steam is a sibling.)
+  if [[ "${GAMESCOPE_USE_ROTATION_SHADER:-0}" == "1" ]] \
+    && "$GAMESCOPE_BIN" --help 2>&1 | grep -q -- '--use-rotation-shader'; then
+    GS_ARGS+=( --use-rotation-shader )
+  fi
+  if [[ "${GAMESCOPE_FORCE_INTERNAL:-1}" == "1" ]] \
+    && "$GAMESCOPE_BIN" --help 2>&1 | grep -q -- '--force-internal'; then
+    GS_ARGS+=( --force-internal )
+  fi
+  if [[ "${GAMESCOPE_FORCE_COMPOSITION:-0}" == "1" ]]; then
+    GS_ARGS+=( --force-composition )
+  fi
+
+  # shellcheck disable=SC2086
+  "$GAMESCOPE_BIN" "${GS_ARGS[@]}" &
+  gamescope_pid=$!
+  cycle_start=$SECONDS
+
+  if ! read -r -t 15 response_x_display response_wl_display <>"$socket"; then
+    echo "ERROR: gamescope ready socket timed out (pid=$gamescope_pid)"
+    kill -9 "$gamescope_pid" 2>/dev/null || true
+    short_fail=$((short_fail + 1))
+    [[ "$short_fail" -ge 3 ]] && break
+    sleep 2
+    continue
+  fi
+
+  export DISPLAY="$response_x_display"
+  export GAMESCOPE_WAYLAND_DISPLAY="$response_wl_display"
+  # Keep WAYLAND_DISPLAY unset so CEF/Qt stay on Xwayland; Steam DisplayManager
+  # uses GAMESCOPE_WAYLAND_DISPLAY → wayland: modeset (Steam Deck).
+  unset WAYLAND_DISPLAY || true
+  # Stop Steam from sanitizing env for children (webhelper / steamclient).
+  export _STEAM_SETENV_MANAGER=1
+  session_debug "gamescope ready: DISPLAY=$DISPLAY GAMESCOPE_WAYLAND_DISPLAY=$GAMESCOPE_WAYLAND_DISPLAY pid=$gamescope_pid"
+  session_debug "display-manager target: wayland: modeset (GAMESCOPE_WAYLAND_DISPLAY set, XDG_SESSION_TYPE unset)"
+  if [[ -x /usr/libexec/steamos-ubuntu/steamos-panel-hold ]]; then
+    /usr/libexec/steamos-ubuntu/steamos-panel-hold release
+  fi
+  systemctl stop steamos-panel-hold.service 2>/dev/null || true
+
+  # Physical volume rocker → PipeWire (grabbed exclusive; Steam OSD would stick).
+  if [[ -x /usr/libexec/steamos-ubuntu/volume-keys ]]; then
+    pkill -f '/usr/libexec/steamos-ubuntu/volume-keys' 2>/dev/null || true
+    # PipeWire under greetd/dbus-run-session: prefer systemd --user, else binaries.
+    if command -v systemctl >/dev/null 2>&1; then
+      # Talk to the real user manager (not the private dbus-run-session bus).
+      systemctl --user start pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null \
+        || env -u DBUS_SESSION_BUS_ADDRESS systemctl --user start \
+             pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null \
+        || true
+    fi
+    if [[ ! -S "${XDG_RUNTIME_DIR}/pipewire-0" ]]; then
+      session_debug "pipewire socket missing — spawning pipewire stack"
+      command -v pipewire >/dev/null 2>&1 && pipewire >/dev/null 2>&1 &
+      command -v wireplumber >/dev/null 2>&1 && wireplumber >/dev/null 2>&1 &
+      command -v pipewire-pulse >/dev/null 2>&1 && pipewire-pulse >/dev/null 2>&1 &
+      for _i in 1 2 3 4 5 6 7 8 9 10; do
+        [[ -S "${XDG_RUNTIME_DIR}/pipewire-0" ]] && break
+        sleep 0.15
+      done
+    fi
+    session_debug "pipewire socket: $(ls -la "${XDG_RUNTIME_DIR}/pipewire-0" 2>&1 || echo missing)"
+    /usr/libexec/steamos-ubuntu/volume-keys &
+    volume_keys_pid=$!
+    session_debug "volume-keys helper pid=${volume_keys_pid} (EVIOCGRAB + wpctl)"
+  fi
+
+  # ChimeraOS: mangoapp sibling with respawn (shares MANGOHUD_CONFIGFILE)
+  pkill -x mangoapp 2>/dev/null || true
+  mango_pid=
+  if command -v mangoapp >/dev/null 2>&1; then
+    (
+      export MANGOHUD_CONFIG=read_cfg
+      export MANGOHUD_CONFIGFILE="${USER_MANGO}/MangoHud.conf"
+      export MANGOHUD_PRESETSFILE="${USER_MANGO}/presets.conf"
+      while true; do
+        mangoapp
+        sleep 1
+      done
+    ) &
+    mango_pid=$!
+    session_debug "mangoapp supervisor pid=${mango_pid}"
+  fi
+
+  if command -v ibus-daemon >/dev/null 2>&1; then
+    ibus-daemon -d -r --panel=disable --emoji-extension=disable 2>/dev/null || true
+  fi
+
+  # Focus workaround: brief early STEAM_GAME tagging (no 60s xwininfo spam).
+  # Set STEAMOS_SESSION_DEBUG=1 for the old verbose probe loop.
+  (
+    for i in 1 2 3 4 5 6; do
+      sleep 2
+      force_steam_game_atoms
+    done
+    if [[ "${STEAMOS_SESSION_DEBUG:-0}" == "1" ]]; then
+      for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        sleep 5
+        echo "----- xwininfo tree t=$((i*5))s cycle=$cycle -----"
+        xwininfo -root -tree 2>&1 | head -40 || echo "xwininfo failed"
+        force_steam_game_atoms
+      done
+    fi
+  ) &
+  probe_pid=$!
+
+  echo "Steam start (cycle $cycle)"
+  if [[ -x /usr/libexec/steamos-ubuntu/ensure-decky-plugin-loader ]]; then
+    # Do NOT restart PluginLoader here — restart kills gamescope's DRM session.
+    SESSION_LOG="$LOG" /usr/libexec/steamos-ubuntu/ensure-decky-plugin-loader --start-only || \
+      echo "WARNING: Decky PluginLoader not ready before Steam (cycle $cycle)"
+  fi
+  "${CLIENT[@]}"
+  steam_rc=$?
+  elapsed=$((SECONDS - cycle_start))
+  echo "Steam exited rc=$steam_rc after ${elapsed}s (cycle $cycle)"
+
+  kill "$probe_pid" 2>/dev/null || true
+  [[ -n "${mango_pid:-}" ]] && kill "$mango_pid" 2>/dev/null || true
+  pkill -x mangoapp 2>/dev/null || true
+  [[ -n "${volume_keys_pid:-}" ]] && kill "$volume_keys_pid" 2>/dev/null || true
+  pkill -f '/usr/libexec/steamos-ubuntu/volume-keys' 2>/dev/null || true
+  kill "$gamescope_pid" 2>/dev/null || true
+  sleep 1
+  kill -9 "$gamescope_pid" 2>/dev/null || true
+  wait "$gamescope_pid" 2>/dev/null || true
+  rm -rf "$tmpdir" 2>/dev/null || true
+
+  # Switch to Desktop: steamos-session-select wrote plasma → exit so greetd starts Plasma.
+  # Do NOT relaunch Steam/gamescope in that case (Deck / CachyOS behaviour).
+  next_session="$(tr -d '[:space:]' </var/lib/steamos-ubuntu/session 2>/dev/null || true)"
+  case "$next_session" in
+    plasma|desktop|plasma.desktop|plasma-mobile|plasma-mobile.desktop)
+      session_debug "session switch requested ($next_session) — ending gamescope-session for greetd"
+      exit 0
+      ;;
+  esac
+
+  # Crash loops: bail so greetd can recover. Long sessions (OOBE/update) → relaunch.
+  if [[ "$elapsed" -lt 45 ]]; then
+    short_fail=$((short_fail + 1))
+    session_debug "short session ($elapsed s); fail count=$short_fail"
+    [[ "$short_fail" -ge 3 ]] && break
+  else
+    short_fail=0
+  fi
+  sleep 2
+done
+
+session_debug "gamescope-session ending steam_rc=$steam_rc"
+sleep 2
+exit "$steam_rc"

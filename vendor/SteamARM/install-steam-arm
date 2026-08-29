@@ -1,0 +1,317 @@
+#!/usr/bin/env bash
+# Clean Steam ARM64 install for SteamOS-Ubuntu (SM8550).
+#
+# Based on the manual 01/02/03 flow from "steam arm desktop/":
+#   01 — download ARM client zip → ~/.local/share/Steam
+#   02 — ~/.steam/* symlinks
+#   03 — /usr/bin/steam + steam.desktop launcher
+# Plus: one bootstrap run until Steam says "restart" then exits (-exitsteam).
+#        Return to Gaming Mode launcher (desktop + Applications → Games).
+#
+# Does NOT touch MangoHud / mangoapp / presets (kept separate on purpose).
+#
+# Usage (as user steam, or any desktop user):
+#   ./install-steam-arm
+#   STEAM_ARM_CHANNEL=steamdeck_publicbeta ./install-steam-arm
+#   STEAM_ARM_SKIP_BOOTSTRAP_RUN=1 ./install-steam-arm   # download+links only
+#
+# Image bake (noninteractive):
+#   STEAM_ARM_NONINTERACTIVE=1 STEAM_ARM_SKIP_BOOTSTRAP_RUN=1 ./install-steam-arm
+#   (do NOT call sudo from inside the chroot — no PTY; the bake overlay owns /usr)
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Icon/share tree: env → next to script → known repo path → system share
+SHARE="${STEAM_ARM_SHARE:-}"
+if [[ -z "${SHARE}" ]]; then
+  for cand in \
+    "${SCRIPT_DIR}" \
+    "/home/odin2/Desktop/SteamOS-Ubuntu/vendor/SteamARM" \
+    "/usr/share/sm8550-steamos/steam-arm"
+  do
+    if [[ -d "${cand}/icons" ]]; then
+      SHARE="${cand}"
+      break
+    fi
+  done
+fi
+SHARE="${SHARE:-/usr/share/sm8550-steamos/steam-arm}"
+
+STEAM_DIR="${HOME}/.local/share/Steam"
+STEAM_HIDDEN="${HOME}/.steam"
+STEAM_BIN="${STEAM_DIR}/steamrtarm64/steam"
+# Gaming Mode channel (Deck client). Override with STEAM_ARM_CHANNEL=publicbeta if needed.
+STEAM_CHANNEL="${STEAM_ARM_CHANNEL:-steamdeck_publicbeta}"
+STEAM_MANIFEST_NAME="steam_client_${STEAM_CHANNEL}_linuxarm64"
+
+log() { printf '==> [steam-arm] %s\n' "$*"; }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "Missing tool: $1"; }
+
+need curl
+need wget
+need unzip
+command -v strings >/dev/null 2>&1 || die "Missing tool: strings (binutils)"
+
+if [[ "${EUID}" -eq 0 ]]; then
+  die "Run as the Steam/desktop user (not root). sudo is used only for /usr bits."
+fi
+
+# Bake runs this via chroot+runuser: no controlling TTY, so `sudo` dies with
+# "unable to allocate pty". /usr launchers come from system_files as root.
+bake_mode() {
+  [[ "${STEAM_ARM_NONINTERACTIVE:-0}" == "1" || "${STEAM_ARM_SKIP_SYSTEM:-0}" == "1" ]]
+}
+
+TARGET_USER="$(id -un)"
+log "Clean Steam ARM install for user=${TARGET_USER} channel=${STEAM_CHANNEL}"
+log "MangoHud is NOT modified by this script."
+
+# ---------------------------------------------------------------------------
+# 02-style links (also needed BEFORE first steam run)
+# ---------------------------------------------------------------------------
+ensure_steam_symlinks() {
+  mkdir -p "${STEAM_HIDDEN}"
+  ln -snf "${STEAM_DIR}" "${STEAM_HIDDEN}/steam"
+  ln -snf "${STEAM_DIR}" "${STEAM_HIDDEN}/root"
+  ln -snf "${STEAM_DIR}/ubuntu12_32" "${STEAM_HIDDEN}/bin"
+  ln -snf "${STEAM_DIR}/ubuntu12_32" "${STEAM_HIDDEN}/bin32"
+  ln -snf "${STEAM_DIR}/ubuntu12_64" "${STEAM_HIDDEN}/bin64"
+  ln -snf "${STEAM_DIR}/linux32" "${STEAM_HIDDEN}/sdk32"
+  ln -snf "${STEAM_DIR}/linux64" "${STEAM_HIDDEN}/sdk64"
+  ln -snf "${STEAM_DIR}/linuxarm64" "${STEAM_HIDDEN}/sdkarm64"
+}
+
+# ---------------------------------------------------------------------------
+# 01 — download + extract into ~/.local/share/Steam
+# ---------------------------------------------------------------------------
+step_download() {
+  mkdir -p "${STEAM_DIR}/package"
+  ensure_steam_symlinks
+  cd "${STEAM_DIR}"
+
+  if [[ -f "${STEAM_BIN}" ]]; then
+    chmod +x "${STEAM_BIN}" 2>/dev/null || true
+    if [[ -x "${STEAM_BIN}" ]]; then
+      log "01: bootstrap binary already present — skip download"
+      echo "${STEAM_CHANNEL}" > "${STEAM_DIR}/package/beta"
+      return 0
+    fi
+  fi
+
+  log "01: fetching manifest ${STEAM_MANIFEST_NAME}…"
+  local manifest target_file download_url
+  manifest="$(curl -fsSL "https://client-update.steamstatic.com/${STEAM_MANIFEST_NAME}" | strings || true)"
+  target_file="$(printf '%s\n' "${manifest}" | grep -oE 'bins_linuxarm64_linuxarm64\.zip\.[^"]+' | grep -v '\.vz\.' | head -1 || true)"
+  [[ -n "${target_file}" ]] || die "Could not parse ARM64 zip name from ${STEAM_MANIFEST_NAME}"
+
+  download_url="https://client-update.steamstatic.com/${target_file}"
+  log "01: downloading ${download_url}"
+  wget -O linuxarm64.zip "${download_url}"
+
+  echo "${STEAM_CHANNEL}" > "${STEAM_DIR}/package/beta"
+  curl -fsSL -o "${STEAM_DIR}/package/${STEAM_MANIFEST_NAME}.manifest" \
+    "https://client-update.steamstatic.com/${STEAM_MANIFEST_NAME}" || true
+
+  unzip -o linuxarm64.zip
+  rm -f linuxarm64.zip
+
+  # Zip often extracts without +x; check existence first, then chmod.
+  if [[ ! -f "${STEAM_BIN}" ]]; then
+    log "01: listing steamrtarm64 after extract:"
+    ls -la "${STEAM_DIR}/steamrtarm64" 2>&1 | head -40 || true
+    die "steamrtarm64/steam missing after extract (expected ${STEAM_BIN})"
+  fi
+  chmod +x "${STEAM_BIN}" \
+    "${STEAM_DIR}/steamrtarm64/steamwebhelper" \
+    "${STEAM_DIR}/steamrtarm64/reaper" \
+    "${STEAM_DIR}/steamrtarm64/steamerrorreporter" \
+    2>/dev/null || true
+  [[ -x "${STEAM_BIN}" ]] || die "steamrtarm64/steam exists but is not executable: ${STEAM_BIN}"
+  log "01: extracted ${STEAM_BIN}"
+}
+
+# ---------------------------------------------------------------------------
+# Bootstrap once: updater runs until "restart steam", then exits. Do NOT relaunch.
+# ---------------------------------------------------------------------------
+step_bootstrap_once() {
+  if [[ "${STEAM_ARM_SKIP_BOOTSTRAP_RUN:-0}" == "1" ]]; then
+    log "bootstrap: skipped (STEAM_ARM_SKIP_BOOTSTRAP_RUN=1)"
+    return 0
+  fi
+  if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" && "${STEAM_ARM_FORCE_BOOTSTRAP:-0}" != "1" ]]; then
+    log "bootstrap: no DISPLAY — skip (set STEAM_ARM_FORCE_BOOTSTRAP=1 under Xvfb for bake)"
+    return 0
+  fi
+
+  local timeout_s="${STEAM_ARM_BOOTSTRAP_TIMEOUT:-900}"
+  log "bootstrap: running steam once (-steamdeck -exitsteam), timeout=${timeout_s}s"
+  log "bootstrap: will stop at 'restart steam' — will NOT relaunch"
+  ensure_steam_symlinks
+
+  set +e
+  if command -v timeout >/dev/null 2>&1; then
+    if command -v setsid >/dev/null 2>&1; then
+      setsid --wait timeout --signal=TERM --kill-after=30 "${timeout_s}" \
+        "${STEAM_BIN}" -steamdeck -exitsteam
+    else
+      timeout --signal=TERM --kill-after=30 "${timeout_s}" \
+        "${STEAM_BIN}" -steamdeck -exitsteam
+    fi
+  else
+    "${STEAM_BIN}" -steamdeck -exitsteam
+  fi
+  local rc=$?
+  set -e
+  # 124 = timeout; treat as soft OK for bake
+  if [[ "${rc}" -eq 124 ]]; then
+    log "bootstrap: timed out after ${timeout_s}s (client may still be usable)"
+  else
+    log "bootstrap: steam exited rc=${rc}"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# 02 — refresh ~/.steam links after bootstrap created ubuntu12_* / linux*
+# ---------------------------------------------------------------------------
+step_links() {
+  ensure_steam_symlinks
+  mkdir -p "${STEAM_DIR}/config"
+  touch "${STEAM_DIR}/config/SteamAppData.vdf" || true
+  log "02: ~/.steam symlinks OK"
+}
+
+# ---------------------------------------------------------------------------
+# Icons (vendor) — no MangoHud
+# ---------------------------------------------------------------------------
+install_icons() {
+  local icon_src="${SHARE}/icons"
+  mkdir -p "${STEAM_DIR}/public" "${HOME}/.local/share/icons/hicolor/scalable/apps"
+
+  if [[ -f "${icon_src}/steam_tray_48.tga" ]]; then
+    cp -a "${icon_src}/steam_tray_48.tga" "${STEAM_DIR}/public/steam_tray_48.tga"
+  fi
+  if [[ -f "${icon_src}/steam.png" ]]; then
+    cp -a "${icon_src}/steam.png" "${STEAM_DIR}/public/steam.png"
+  fi
+
+  if bake_mode; then
+    log "icons: skip /usr (image bake — no sudo in chroot)"
+    return 0
+  fi
+
+  # System icons need root (interactive desktop install only)
+  if [[ -f "${icon_src}/deck-logo.svg" ]]; then
+    sudo install -D -m 0644 "${icon_src}/deck-logo.svg" \
+      /usr/share/icons/hicolor/scalable/apps/steamos-gamemode.svg
+    sudo install -D -m 0644 "${icon_src}/deck-logo.svg" \
+      /usr/share/pixmaps/steamos-gamemode.svg
+  fi
+  if [[ -f "${icon_src}/steam.png" ]]; then
+    sudo install -D -m 0644 "${icon_src}/steam.png" \
+      /usr/share/icons/hicolor/48x48/apps/steam.png
+    sudo install -D -m 0644 "${icon_src}/steam.png" \
+      /usr/share/pixmaps/steam.png
+  elif [[ -f "${icon_src}/steam_tray_48.tga" ]]; then
+    sudo install -D -m 0644 "${icon_src}/steam_tray_48.tga" \
+      /usr/share/pixmaps/steam_tray_48.tga
+  fi
+  sudo gtk-update-icon-cache -f /usr/share/icons/hicolor >/dev/null 2>&1 || true
+}
+
+# ---------------------------------------------------------------------------
+# 03 — /usr/bin/steam + Plasma launcher + Return to Gaming Mode
+# ---------------------------------------------------------------------------
+step_system_launchers() {
+  [[ -x "${STEAM_BIN}" ]] || die "Steam binary missing: ${STEAM_BIN}"
+
+  install_icons
+
+  if bake_mode; then
+    log "03: skip /usr/bin/steam + .desktop (image bake — system_files overlay as root)"
+    return 0
+  fi
+
+  # Prefer launch-steam shim (Deck env / LD paths). Else raw binary like 03_.
+  if [[ -x /usr/libexec/steamos-ubuntu/launch-steam ]]; then
+    sudo tee /usr/bin/steam >/dev/null <<'EOF'
+#!/usr/bin/env bash
+# Compatibility shim: Steam / scripts expect `steam` on PATH.
+exec /usr/libexec/steamos-ubuntu/launch-steam "$@"
+EOF
+    sudo chmod 0755 /usr/bin/steam
+  else
+    sudo ln -sfn "${STEAM_BIN}" /usr/bin/steam
+  fi
+  # Also /usr/local/bin/steam (03_ style) → same /usr/bin/steam
+  sudo ln -sfn /usr/bin/steam /usr/local/bin/steam
+
+  # Steam launcher icon: steam_tray_48.tga (as in 03_ / vendor icons)
+  local steam_icon="${STEAM_DIR}/public/steam_tray_48.tga"
+  if [[ ! -f "${steam_icon}" ]]; then
+    steam_icon="/usr/share/pixmaps/steam_tray_48.tga"
+  fi
+  if [[ ! -f "${steam_icon}" ]]; then
+    steam_icon=steam
+  fi
+
+  sudo install -d /usr/local/share/applications /usr/share/applications
+
+  # Steam (Applications → Games)
+  sudo tee /usr/local/share/applications/steam.desktop >/dev/null <<EOF
+[Desktop Entry]
+Name=Steam
+Comment=Steam Client ARM64
+Exec=/usr/bin/steam
+Icon=${steam_icon}
+Terminal=false
+Type=Application
+Categories=Game;
+StartupNotify=true
+EOF
+  sudo chmod 0644 /usr/local/share/applications/steam.desktop
+  sudo cp -a /usr/local/share/applications/steam.desktop \
+    /usr/share/applications/steam.desktop
+
+  # Return to Gaming Mode (Applications → Games + Desktop)
+  sudo tee /usr/share/applications/steamos-gamemode.desktop >/dev/null <<'EOF'
+[Desktop Entry]
+Name=Return to Gaming Mode
+Name[es]=Volver al modo Gaming
+Comment=Leave Plasma and start Steam Deck Gamepad UI
+Comment[es]=Salir de Plasma e iniciar el modo Steam Deck
+Exec=steamos-session-select gamescope
+Icon=steamos-gamemode
+Terminal=false
+Type=Application
+Categories=Game;System;
+StartupNotify=false
+EOF
+  sudo chmod 0644 /usr/share/applications/steamos-gamemode.desktop
+
+  mkdir -p "${HOME}/Desktop"
+  cp -a /usr/share/applications/steamos-gamemode.desktop \
+    "${HOME}/Desktop/steamos-gamemode.desktop"
+  chmod 0755 "${HOME}/Desktop/steamos-gamemode.desktop"
+
+  sudo update-desktop-database /usr/local/share/applications/ 2>/dev/null || true
+  sudo update-desktop-database /usr/share/applications/ 2>/dev/null || true
+
+  log "03: /usr/bin/steam + steam.desktop + Return to Gaming Mode"
+}
+
+# ---------------------------------------------------------------------------
+step_download
+step_bootstrap_once
+step_links
+step_system_launchers
+
+mkdir -p "${HOME}/.config/steamos-ubuntu"
+date -Iseconds > "${HOME}/.config/steamos-ubuntu/steam-installed"
+
+log "Done (clean Steam ARM — no MangoHud changes)."
+log "  Binary:  ${STEAM_BIN}"
+log "  PATH:    /usr/bin/steam"
+log "  Menu:    Steam + Return to Gaming Mode (Games)"
+log "  Desktop: ${HOME}/Desktop/steamos-gamemode.desktop"

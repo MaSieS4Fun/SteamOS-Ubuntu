@@ -1,0 +1,196 @@
+.TH "V4L2-CTL" "1" "March 2015" "v4l-utils @MAN_PACKAGE_VERSION@" "User Commands"
+.SH NAME
+v4l2-ctl - An application to control video4linux drivers
+.SH SYNOPSIS
+.B v4l2-ctl
+[\fI-h\fR] [\fI-d <dev>\fR] [many other options]
+.SH DESCRIPTION
+The v4l2-ctl tool is used to control video4linux devices, either video, vbi, radio
+or swradio, both input and output. It is able to control almost any aspect of such
+devices covering the full V4L2 API.
+
+.SH OPTIONS
+.TP
+\fB-A\fR, \fB--list-devices\fR
+List all v4l devices. If \fB-z\fR was given, then list just the
+devices of the media device with the bus info string as
+specified by the \fB-z\fR option.
+.TP
+\fB\-d\fR, \fB\-\-device\fR \fI<dev>\fR
+Use device \fI<dev>\fR as the V4L2 device.
+if \fI<dev>\fR starts with a digit, then /dev/video\fI<dev>\fR is used
+Otherwise if \fB-z\fR was specified earlier, then \fI<dev>\fR is the entity name
+or interface ID (if prefixed with 0x) as found in the topology of the media device
+with the bus info string as specified by the \fB-z\fR option.
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+Turn on verbose reporting.
+.TP
+\fB\-\-version\fR
+Show version information.
+.TP
+\fB\-w\fR, \fB\-\-wrapper\fR
+Use the libv4l2 wrapper library for all V4L2 device accesses. By default v4l2-ctl will
+directly access the V4L2 device, but with this option all access will go via this
+wrapper library.
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Prints the help message.
+.TP
+\fB\-\-help\-io\fR
+Prints the help message for all options that get/set/list inputs and outputs, both
+video and audio.
+.TP
+\fB\-\-help\-meta\fR
+Prints the help message for all options that get/set/list metadata formats.
+.TP
+\fB\-\-help\-misc\fR
+Prints the help message for miscellaneous options.
+.TP
+\fB\-\-help\-overlay\fR
+Prints the help message for all options that get/set/list overlay and framebuffer
+formats.
+.TP
+\fB\-\-help\-sdr\fR
+Prints the help message for all options that get/set/list software defined radio
+formats.
+.TP
+\fB\-\-help\-selection\fR
+Prints the help message for all options that deal with selections (cropping and
+composing).
+.TP
+\fB\-\-help\-stds\fR
+Prints the help message for all options that deal with SDTV standards and Digital
+Video timings.
+.TP
+\fB\-\-help\-streaming\fR
+Prints the help message for all options that deal with streaming.
+.TP
+\fB\-\-help\-subdev\fR
+Prints the help message for all options that deal with v4l-subdevX devices.
+.TP
+\fB\-\-help\-tuner\fR
+Prints the help message for all options that deal with tuners and modulators.
+.TP
+\fB\-\-help\-vbi\fR
+Prints the help message for all options that get/set/list VBI formats.
+.TP
+\fB\-\-help\-vidcap\fR
+Prints the help message for all options that get/set/list video capture formats.
+.TP
+\fB\-\-help\-vidout\fR
+Prints the help message for all options that get/set/list video output formats.
+.TP
+\fB\-\-help\-edid\fR
+Prints the help message for all options that get/set EDIDs.
+.TP
+\fB\-\-help\-all\fR
+Prints the help message for all options.
+.TP
+\fB--all\fR
+Display all information available.
+.TP
+\fB-C\fR, \fB--get-ctrl\fR \fI<ctrl>\fR[,\fI<ctrl>\fR...]
+Get the value of the controls [VIDIOC_G_EXT_CTRLS].
+.TP
+\fB-c\fR, \fB--set-ctrl\fR \fI<ctrl>\fR=\fI<val>\fR[,\fI<ctrl>\fR=\fI<val>\fR...]
+Set the value of the controls [VIDIOC_S_EXT_CTRLS].
+.TP
+\fB-D\fR, \fB--info\fR
+Show driver info [VIDIOC_QUERYCAP].
+.TP
+\fB-e\fR, \fB--out-device\fR \fI<dev>\fR
+Use device \fI<dev>\fR for output streams instead of the
+default device as set with \fB--device\fR. If \fI<dev>\fR starts
+with a digit, then /dev/video\fI<dev>\fR is used.
+Otherwise if \fB-z\fR was specified earlier, then \fI<dev>\fR is the entity name
+or interface ID (if prefixed with 0x) as found in the topology of the media device
+with the bus info string as specified by the \fB-z\fR option.
+.TP
+\fB-E\fR, \fB--export-device\fR \fI<dev>\fR
+Use device \fI<dev>\fR for exporting DMA buffers.
+If \fI<dev>\fR starts with a digit, then /dev/video\fI<dev>\fR is used.
+Otherwise if \fB-z\fR was specified earlier, then \fI<dev>\fR is the entity name
+or interface ID (if prefixed with 0x) as found in the topology of the media device
+with the bus info string as specified by the \fB-z\fR option.
+.TP
+\fB-z\fR, \fB--media-bus-info\fR \fI<bus-info>\fR
+Find the media device with the given \fI<bus-info>\fR string. If set, then
+\fB-d\fR, \fB-e\fR and \fB-E\fR options can use the entity name or interface ID
+to refer to the device nodes. Example: v4l2-ctl -z platform:vivid-000 -d vivid-000-vid-cap
+.TP
+\fB-k\fR, \fB--concise\fR
+Be more concise if possible.
+.TP
+\fB-l\fR, \fB--list-ctrls\fR
+Display all controls and their values [VIDIOC_QUERYCTRL].
+.TP
+\fB-L\fR, \fB--list-ctrls-menus\fR
+Display all controls and their menus [VIDIOC_QUERYMENU].
+.TP
+\fB-r\fR, \fB--subset\fR \fI<ctrl>\fR[,\fI<offset>\fR,\fI<size>\fR]+
+The subset of the N-dimensional array to get/set for control \fI<ctrl>\fR,
+for every dimension an (\fI<offset>\fR, \fI<size>\fR) tuple is given.
+.TP
+\fB--list-devices-input\fR \fI<name>\fR
+Same as \fB--list-devices\fR, but only show devices with a current
+input name that matches \fI<name>\fR.
+.TP
+\fB--list-devices-output\fR \fI<name>\fR
+Same as \fB--list-devices\fR, but only show devices with a current
+output name that matches \fI<name>\fR.
+.TP
+\fB--log-status\fR
+Log the board status in the kernel log [VIDIOC_LOG_STATUS].
+.TP
+\fB--get-priority\fR
+Query the current access priority [VIDIOC_G_PRIORITY].
+.TP
+\fB--set-priority\fR \fI<prio>\fR
+Set the new access priority [VIDIOC_S_PRIORITY].
+\fI<prio>\fR is 1 (background), 2 (interactive) or 3 (record).
+.TP
+\fB--silent\fR
+Only set the result code, do not print any messages.
+.TP
+\fB--sleep\fR \fI<secs>\fR
+Sleep \fI<secs>\fR, call QUERYCAP and close the file handle.
+.SH EXIT STATUS
+On success, it returns 0. Otherwise, it will return the error code.
+.SH EXAMPLES
+Query the device information of /dev/video1:
+
+	v4l2-ctl -d1 -D
+
+Stream video using MMAP stream I/O from /dev/video0:
+
+	v4l2-ctl -d0 --stream-mmap
+
+Stream one frame of video from /dev/video0 and store it in a file:
+
+	v4l2-ctl --stream-mmap --stream-count=1 --stream-to=file.raw
+
+Stream video from /dev/video0 and stream it over the network:
+
+	v4l2-ctl --stream-mmap --stream-to-host <hostname>
+
+Use 'qvidcap -p' on the host to view the video.
+
+Stream video from /dev/video0 using DMABUFs exported from /dev/video2:
+
+	v4l2-ctl --stream-dmabuf --export-device /dev/video2
+
+Stream video from a memory-to-memory device:
+
+	v4l2-ctl --stream-mmap --stream-out-mmap
+
+Stream video from a capture video device (/dev/video1) to an output video device
+(/dev/video2):
+
+	v4l2-ctl -d1 --stream-mmap --out-device /dev/video2 --stream-out-dmabuf
+
+.SH BUGS
+This manual page is a work in progress.
+
+Bug reports or questions about this utility should be sent to the linux-media@vger.kernel.org
+mailinglist.

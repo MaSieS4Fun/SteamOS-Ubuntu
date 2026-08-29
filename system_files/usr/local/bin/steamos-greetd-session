@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# greetd entry — Gaming Mode (gamescope) or Plasma desktop.
+set +e
+
+pick_session_log() {
+  local candidate
+  for candidate in /var/log/steamos-session.log \
+                   "${XDG_RUNTIME_DIR:-/tmp}/steamos-session.log" \
+                   /tmp/steamos-session.log; do
+    mkdir -p "$(dirname "$candidate")" 2>/dev/null || true
+    if touch "$candidate" 2>/dev/null && chmod u+w "$candidate" 2>/dev/null; then
+      chmod 666 "$candidate" 2>/dev/null || true
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo /dev/null
+}
+
+LOG="$(pick_session_log)"
+ln -sfn "$LOG" /var/tmp/steamos-session.log 2>/dev/null || true
+exec >>"$LOG" 2>&1 || true
+
+echo "===== $(date -Iseconds) steamos-greetd-session uid=$(id -u) ====="
+
+export HOME="${HOME:-/home/steam}"
+export USER="${USER:-steam}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+
+export LIBSEAT_BACKEND="${LIBSEAT_BACKEND:-seatd}"
+unset XDG_SESSION_TYPE || true
+export PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
+export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/lib/aarch64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+export SDL_GAMECONTROLLERCONFIG_FILE="${SDL_GAMECONTROLLERCONFIG_FILE:-/etc/sdl2/qcom-gamecontrollerdb.txt}"
+export SDL_VIDEO_X11_DGAMOUSE=0
+export VK_DRIVER_FILES="${VK_DRIVER_FILES:-/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json}"
+export VK_ICD_FILENAMES="${VK_ICD_FILENAMES:-/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json}"
+
+SESSION_FILE=/var/lib/steamos-ubuntu/session
+SESSION=gamescope-session
+[[ -f "$SESSION_FILE" ]] && SESSION="$(tr -d '[:space:]' < "$SESSION_FILE")"
+
+case "$SESSION" in
+  plasma-mobile|plasma-mobile.desktop)
+    if [[ -x /usr/share/plasma-mobile-steamos/launch-plasma-mobile.sh ]]; then
+      exec /usr/share/plasma-mobile-steamos/launch-plasma-mobile.sh
+    fi
+    SESSION=plasma
+    ;;
+esac
+
+case "$SESSION" in
+  desktop|plasma|plasma.desktop)
+    if command -v startplasma-wayland >/dev/null 2>&1; then
+      mkdir -p /tmp/.X11-unix
+      chmod 1777 /tmp /tmp/.X11-unix 2>/dev/null || true
+      unset STEAMOS_DBUS_RUN_SESSION || true
+      if [[ -S "${XDG_RUNTIME_DIR}/bus" ]]; then
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+      fi
+      sleep 1
+      export XDG_CURRENT_DESKTOP=KDE
+      export XDG_SESSION_DESKTOP=plasma
+      export DESKTOP_SESSION=plasma
+      export XDG_SESSION_TYPE=wayland
+      export QT_QPA_PLATFORM=wayland
+      unset STEAMOS_SESSION DISPLAY WAYLAND_DISPLAY || true
+      mkdir -p "${HOME}/.config"
+      if [[ -x /usr/lib/aarch64-linux-gnu/libexec/plasma-dbus-run-session-if-needed ]]; then
+        exec /usr/lib/aarch64-linux-gnu/libexec/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland
+      fi
+      exec startplasma-wayland
+    fi
+    ;;
+esac
+
+if [[ -z "${STEAMOS_DBUS_RUN_SESSION:-}" ]] && command -v dbus-run-session >/dev/null 2>&1; then
+  unset DBUS_SESSION_BUS_ADDRESS
+  export STEAMOS_DBUS_RUN_SESSION=1
+  exec dbus-run-session -- "$0" "$@"
+fi
+
+exec /usr/bin/gamescope-session

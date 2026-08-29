@@ -1,0 +1,15 @@
+[Unit]
+Description=Black panel until gamescope owns the display
+DefaultDependencies=no
+After=systemd-sysctl.service systemd-journald.service
+Before=greetd.service display-manager.service
+ConditionPathExists=/dev/tty1
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/steamos-ubuntu/steamos-panel-hold hold
+ExecStop=/usr/libexec/steamos-ubuntu/steamos-panel-hold release
+TimeoutStopSec=3
+
+[Install]
+WantedBy=multi-user.target

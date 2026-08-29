@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Return to Gaming Mode
+Name[es]=Volver al modo Gaming
+Comment=Leave Plasma and start Steam Deck Gamepad UI
+Comment[es]=Salir de Plasma e iniciar el modo Steam Deck
+Exec=steamos-desktop-to-gamescope
+Icon=steamos-gamemode
+Terminal=false
+Type=Application
+Categories=Game;System;
+StartupNotify=false

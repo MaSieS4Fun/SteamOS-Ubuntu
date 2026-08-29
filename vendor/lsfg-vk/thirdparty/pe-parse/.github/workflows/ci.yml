@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  schedule:
+    # run CI every day even if no PRs/merges occur
+    - cron: '0 12 * * *'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: lint
+        run: |
+          mkdir build && cd build
+          cmake ..
+          cmake --build . --target peparse_format
+          cd .. && git diff --exit-code
+
+  pe-parse:
+    strategy:
+      matrix:
+        platform: ["ubuntu-latest", "macos-latest"]
+        build-type: ["Debug", "Release"]
+        build-shared: ["0", "1"]
+        compiler:
+        - { CC: "clang", CXX: "clang++" }
+        - { CC: "gcc", CXX: "g++" }
+        exclude:
+        - platform: macos-latest
+          compiler: { CC: "gcc", CXX: "g++" }
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'true'
+    - name: Enable ASan+UBSan Sanitizers
+      if: matrix.build-type == 'Debug'
+      run: |
+        echo "SANITIZER_FLAG=-DPEPARSE_USE_SANITIZER=Address,Undefined" >> $GITHUB_ENV
+    - name: build
+      env:
+        CC: ${{ matrix.compiler.CC }}
+        CXX: ${{ matrix.compiler.CXX }}
+      run: |
+        mkdir build
+        cd build
+        cmake \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+          -DBUILD_SHARED_LIBS=${{ matrix.build-shared }} \
+          -DPEPARSE_ENABLE_TESTING=ON \
+          -DPEPARSE_ENABLE_EXAMPLES=ON \
+          ${SANITIZER_FLAG} \
+          ..
+        cmake --build .
+    - name: test
+      env:
+        CTEST_OUTPUT_ON_FAILURE: 1
+      run: |
+        cd build && ctest -V
+        ./dump-pe/dump-pe ../tests/assets/example.exe
+
+  pepy:
+    strategy:
+      matrix:
+        platform: ["ubuntu-latest", "macos-latest"]
+        python:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python }}
+    - name: build
+      run: |
+        python -m pip install build wheel setuptools
+        python -m build
+    - name: test distributions
+      run: |
+        for dist in dist/*; do
+          python -m venv test-env
+
+          ./test-env/bin/python -m pip install "${dist}"
+          ./test-env/bin/python tests/test_pepy.py tests/assets/example.exe
+
+          rm -rf test-env
+        done
+
+  pe-parse-windows:
+    strategy:
+      matrix:
+        build-arch: ["x64", "Win32"]
+        build-type: ["Debug", "Release"]
+        build-shared: ["0", "1"]
+    runs-on: windows-2019
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'true'
+    - name: Enable ASan Sanitizers
+      if: matrix.build-type == 'Debug' && matrix.build-arch == 'x64'
+      run: |
+        echo "SANITIZER_FLAG=-DPEPARSE_USE_SANITIZER=Address" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf-8 -Append
+    - uses: ilammy/msvc-dev-cmd@v1.13.0
+      with:
+        arch: ${{ matrix.build-arch }}
+    - name: build
+      run: |
+        mkdir build
+        cd build
+        cmake `
+          -G "Visual Studio 16 2019" `
+          -A ${{ matrix.build-arch }} `
+          -DBUILD_SHARED_LIBS=${{ matrix.build-shared }} `
+          -DPEPARSE_ENABLE_TESTING=ON `
+          -DPEPARSE_ENABLE_EXAMPLES=ON `
+          $Env:SANITIZER_FLAG `
+          ..
+        cmake --build . --config ${{ matrix.build-type }}
+    - name: install
+      run: |
+        cd build
+        cmake --build . --config ${{ matrix.build-type }} --target install
+    - name: test
+      env:
+        CTEST_OUTPUT_ON_FAILURE: 1
+      run: |
+        cd build
+        ctest -V
+        .\bin\dump-pe.exe ..\tests\assets\example.exe
+
+  pepy-windows:
+    strategy:
+      matrix:
+        python:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python }}
+    - name: build
+      run: |
+        python -m pip install --upgrade build wheel setuptools
+        python -m build
+    - name: install
+      run: |
+        python -m pip install --user .
+    - name: test
+      run: |
+        python tests/test_pepy.py tests/assets/example.exe

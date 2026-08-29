@@ -1,0 +1,240 @@
+diff --git a/utils/common/v4l2-tpg-colors.c b/utils/common/v4l2-tpg-colors.c
+index a4341205..b4e257c2 100644
+--- a/utils/common/v4l2-tpg-colors.c
++++ b/utils/common/v4l2-tpg-colors.c
+@@ -24,7 +24,7 @@
+  */
+ 
+ #include <linux/videodev2.h>
+-#include <media/tpg/v4l2-tpg.h>
++#include "v4l2-tpg-colors.h"
+ 
+ /* sRGB colors with range [0-255] */
+ const struct tpg_rbg_color8 tpg_colors[TPG_COLOR_MAX] = {
+diff --git a/utils/common/v4l2-tpg-core.c b/utils/common/v4l2-tpg-core.c
+index 630a75e0..44972222 100644
+--- a/utils/common/v4l2-tpg-core.c
++++ b/utils/common/v4l2-tpg-core.c
+@@ -8,8 +8,8 @@
+  * Copyright 2014 Cisco Systems, Inc. and/or its affiliates. All rights reserved.
+  */
+ 
+-#include <linux/module.h>
+-#include <media/tpg/v4l2-tpg.h>
++#include "compiler.h"
++#include "v4l2-tpg-colors.h"
+ 
+ /* Must remain in sync with enum tpg_pattern */
+ const char * const tpg_pattern_strings[] = {
+@@ -37,7 +36,6 @@ const char * const tpg_pattern_strings[] = {
+ 	"Noise",
+ 	NULL
+ };
+-EXPORT_SYMBOL_GPL(tpg_pattern_strings);
+ 
+ /* Must remain in sync with enum tpg_aspect */
+ const char * const tpg_aspect_strings[] = {
+@@ -48,7 +46,6 @@ const char * const tpg_aspect_strings[] = {
+ 	"16x9 Anamorphic",
+ 	NULL
+ };
+-EXPORT_SYMBOL_GPL(tpg_aspect_strings);
+ 
+ /*
+  * Sine table: sin[0] = 127 * sin(-180 degrees)
+@@ -84,7 +81,6 @@ void tpg_set_font(const u8 *f)
+ {
+ 	font8x16 = f;
+ }
+-EXPORT_SYMBOL_GPL(tpg_set_font);
+ 
+ void tpg_init(struct tpg_data *tpg, unsigned w, unsigned h)
+ {
+@@ -107,7 +103,6 @@ void tpg_init(struct tpg_data *tpg, unsigned w, unsigned h)
+ 	tpg->perc_fill = 100;
+ 	tpg->hsv_enc = V4L2_HSV_ENC_180;
+ }
+-EXPORT_SYMBOL_GPL(tpg_init);
+ 
+ int tpg_alloc(struct tpg_data *tpg, unsigned max_w)
+ {
+@@ -149,7 +144,6 @@ int tpg_alloc(struct tpg_data *tpg, unsigned max_w)
+ 	}
+ 	return 0;
+ }
+-EXPORT_SYMBOL_GPL(tpg_alloc);
+ 
+ void tpg_free(struct tpg_data *tpg)
+ {
+@@ -174,7 +168,6 @@ void tpg_free(struct tpg_data *tpg)
+ 		tpg->random_line[plane] = NULL;
+ 	}
+ }
+-EXPORT_SYMBOL_GPL(tpg_free);
+ 
+ bool tpg_s_fourcc(struct tpg_data *tpg, u32 fourcc)
+ {
+@@ -466,7 +459,6 @@ bool tpg_s_fourcc(struct tpg_data *tpg, u32 fourcc)
+ 	}
+ 	return true;
+ }
+-EXPORT_SYMBOL_GPL(tpg_s_fourcc);
+ 
+ void tpg_s_crop_compose(struct tpg_data *tpg, const struct v4l2_rect *crop,
+ 		const struct v4l2_rect *compose)
+@@ -482,7 +474,6 @@ void tpg_s_crop_compose(struct tpg_data *tpg, const struct v4l2_rect *crop,
+ 		tpg->scaled_width = 2;
+ 	tpg->recalc_lines = true;
+ }
+-EXPORT_SYMBOL_GPL(tpg_s_crop_compose);
+ 
+ void tpg_reset_source(struct tpg_data *tpg, unsigned width, unsigned height,
+ 		       u32 field)
+@@ -507,7 +498,6 @@ void tpg_reset_source(struct tpg_data *tpg, unsigned width, unsigned height,
+ 				       (2 * tpg->hdownsampling[p]);
+ 	tpg->recalc_square_border = true;
+ }
+-EXPORT_SYMBOL_GPL(tpg_reset_source);
+ 
+ static enum tpg_color tpg_get_textbg_color(struct tpg_data *tpg)
+ {
+@@ -1528,7 +1518,6 @@ unsigned tpg_g_interleaved_plane(const struct tpg_data *tpg, unsigned buf_line)
+ 		return 0;
+ 	}
+ }
+-EXPORT_SYMBOL_GPL(tpg_g_interleaved_plane);
+ 
+ /* Return how many pattern lines are used by the current pattern. */
+ static unsigned tpg_get_pat_lines(const struct tpg_data *tpg)
+@@ -2006,7 +1995,6 @@ void tpg_gen_text(const struct tpg_data *tpg, u8 *basep[TPG_MAX_PLANES][2],
+ 		}
+ 	}
+ }
+-EXPORT_SYMBOL_GPL(tpg_gen_text);
+ 
+ const char *tpg_g_color_order(const struct tpg_data *tpg)
+ {
+@@ -2030,7 +2018,6 @@ const char *tpg_g_color_order(const struct tpg_data *tpg)
+ 		return NULL;
+ 	}
+ }
+-EXPORT_SYMBOL_GPL(tpg_g_color_order);
+ 
+ void tpg_update_mv_step(struct tpg_data *tpg)
+ {
+@@ -2079,7 +2066,6 @@ void tpg_update_mv_step(struct tpg_data *tpg)
+ 	if (factor < 0)
+ 		tpg->mv_vert_step = tpg->src_height - tpg->mv_vert_step;
+ }
+-EXPORT_SYMBOL_GPL(tpg_update_mv_step);
+ 
+ /* Map the line number relative to the crop rectangle to a frame line number */
+ static unsigned tpg_calc_frameline(const struct tpg_data *tpg, unsigned src_y,
+@@ -2171,7 +2157,6 @@ void tpg_calc_text_basep(struct tpg_data *tpg,
+ 	if (p == 0 && tpg->interleaved)
+ 		tpg_calc_text_basep(tpg, basep, 1, vbuf);
+ }
+-EXPORT_SYMBOL_GPL(tpg_calc_text_basep);
+ 
+ static int tpg_pattern_avg(const struct tpg_data *tpg,
+ 			   unsigned pat1, unsigned pat2)
+@@ -2223,7 +2208,6 @@ void tpg_log_status(struct tpg_data *tpg)
+ 	pr_info("tpg quantization: %d/%d\n", tpg->quantization, tpg->real_quantization);
+ 	pr_info("tpg RGB range: %d/%d\n", tpg->rgb_range, tpg->real_rgb_range);
+ }
+-EXPORT_SYMBOL_GPL(tpg_log_status);
+ 
+ /*
+  * This struct contains common parameters used by both the drawing of the
+@@ -2629,7 +2613,6 @@ void tpg_fill_plane_buffer(struct tpg_data *tpg, v4l2_std_id std,
+ 				vbuf + buf_line * params.stride);
+ 	}
+ }
+-EXPORT_SYMBOL_GPL(tpg_fill_plane_buffer);
+ 
+ void tpg_fillbuffer(struct tpg_data *tpg, v4l2_std_id std, unsigned p, u8 *vbuf)
+ {
+@@ -2646,8 +2629,3 @@ void tpg_fillbuffer(struct tpg_data *tpg, v4l2_std_id std, unsigned p, u8 *vbuf)
+ 		offset += tpg_calc_plane_size(tpg, i);
+ 	}
+ }
+-EXPORT_SYMBOL_GPL(tpg_fillbuffer);
+-
+-MODULE_DESCRIPTION("V4L2 Test Pattern Generator");
+-MODULE_AUTHOR("Hans Verkuil");
+-MODULE_LICENSE("GPL");
+diff --git a/utils/common/v4l2-tpg.h b/utils/common/v4l2-tpg.h
+index 0b0ddb87..91da74ec 100644
+--- a/utils/common/v4l2-tpg.h
++++ b/utils/common/v4l2-tpg.h
+@@ -8,13 +8,65 @@
+ #ifndef _V4L2_TPG_H_
+ #define _V4L2_TPG_H_
+ 
+-#include <linux/types.h>
+-#include <linux/errno.h>
+-#include <linux/random.h>
+-#include <linux/slab.h>
+-#include <linux/vmalloc.h>
+ #include <linux/videodev2.h>
+ 
++#include <stdbool.h>
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <errno.h>
++
++typedef __u32 u32;
++typedef __u16 u16;
++typedef __s16 s16;
++typedef __u8 u8;
++typedef __s8 s8;
++
++#ifndef __packed
++#define __packed __attribute__((packed))
++#endif
++#define pr_info printf
++#define noinline
++
++#define tpg_min(a,b)	((a) < (b) ? (a) : (b))
++#define tpg_max(a,b)	((a) > (b) ? (a) : (b))
++#define min3(x, y, z) tpg_min((typeof(x))tpg_min(x, y), z)
++#define max3(x, y, z) tpg_max((typeof(x))tpg_max(x, y), z)
++#define array_size(a, b) ((a) * (b))
++#define array3_size(a, b, c) ((a) * (b) * (c))
++
++static inline void vfree(void *p)
++{
++	free(p);
++}
++
++static inline void *vzalloc(unsigned long size)
++{
++	return calloc(1, size);
++}
++
++#define clamp(val, min, max) ({			\
++	typeof(val) __val = (val);		\
++	typeof(min) __min = (min);		\
++	typeof(max) __max = (max);		\
++	(void) (&__val == &__min);		\
++	(void) (&__val == &__max);		\
++	__val = __val < __min ? __min: __val;	\
++	__val > __max ? __max: __val; })
++
++#define clamp_t(type, val, min, max) clamp((type)val, (type)min, (type)max)
++
++static inline u32 get_random_u32_below(u32 ep_ro)
++{
++	return rand() % ep_ro;
++}
++
++static inline u32 get_random_u8(void)
++{
++	return get_random_u32_below(256);
++}
++
++
+ struct tpg_rbg_color8 {
+ 	unsigned char r, g, b;
+ };

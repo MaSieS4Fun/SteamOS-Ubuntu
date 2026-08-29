@@ -1,0 +1,30 @@
+# ABL DTB chain — reference / ROCKNIX slot order (from reference-boot-partition/KERNEL).
+#
+# ROCKNIX-ABL picks chain[index] for the stored device model. MaSi used the wrong
+# permutation (0=Odin2, 1=Mini, 2=Portal…) — reference uses:
+#   1=Portal, 2=Odin2, 3=Mini, 4=Thor, 5–6=RP6
+# Slot 0 = other SoC (Odin3) in reference; kept as reference blob for index alignment.
+# Slots 7–8 = SM8650 handhelds (wrong SoC for this kernel) — reference blobs.
+# Slots 9–13 = AYANEO SM8550 — kbuild from Armbian/MaSi DTS.
+#
+# Extract reference blobs once: ./scripts/extract-reference-dtb-chain.sh
+#
+# SLOT|SOURCE|FILE|DEVICE
+0|reference|slot-00.dtb|slot0-ref
+1|kbuild|qcs8550-ayn-odin2portal.dtb|portal
+2|kbuild|qcs8550-ayn-odin2.dtb|odin2
+# Mini: use the reference DTB (known-good panel/BL: xm91080g + odin2miniled).
+# Armbian kbuild Mini has caused black screen + no initramfs log for some testers
+# while Portal/Odin2/Thor/RP6 on the same MaSi Image boot fine. Revisit kbuild when
+# a Mini tester confirms DEBUG_BOOTLOG reaches /boot/masi-boot.log.
+3|reference|slot-03.dtb|mini
+4|kbuild|qcs8550-ayn-thor.dtb|thor
+5|kbuild|qcs8550-retroidpocket-rp6.dtb|rp6
+6|kbuild|qcs8550-retroidpocket-rp6.dtb|rp6-alt
+7|reference|slot-07.dtb|slot7-ref
+8|reference|slot-08.dtb|slot8-ref
+9|kbuild|qcs8550-ayaneo-pocketace.dtb|ace
+10|kbuild|qcs8550-ayaneo-pocketdmg.dtb|dmg
+11|kbuild|qcs8550-ayaneo-pocketds.dtb|ds
+12|kbuild|qcs8550-ayaneo-pocketevo.dtb|evo
+13|kbuild|qcs8550-ayaneo-pockets1.dtb|s1

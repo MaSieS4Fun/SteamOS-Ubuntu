@@ -1,0 +1,25 @@
+/* Steam OOBE helpers — allow user "steam" without password prompts (passwordless wheel rules). */
+polkit.addRule(function (action, subject) {
+  if (subject.user !== "steam") {
+    return undefined;
+  }
+
+  if (action.id === "org.freedesktop.timedate1.set-timezone") {
+    return polkit.Result.YES;
+  }
+
+  if (action.id === "org.freedesktop.policykit.exec") {
+    var program = action.lookup("program");
+    var allowed = [
+      "/usr/bin/steamos-polkit-helpers/steamos-set-timezone",
+      "/usr/bin/steamos-polkit-helpers/steamos-update",
+      "/usr/bin/steamos-polkit-helpers/steamos-select-branch",
+      "/usr/bin/steamos-polkit-helpers/jupiter-biosupdate"
+    ];
+    if (allowed.indexOf(program) >= 0) {
+      return polkit.Result.YES;
+    }
+  }
+
+  return undefined;
+});

@@ -1,0 +1,33 @@
+% no signature
+
+1 0obj
+<< >>
+stream
+BT/ 55 Tf
+10 400Td(http://www.corkami.com)'
+ET
+%end0bj are never required
+endstream
+
+<< % no tr41l3r keyword!
+  /Root <<
+  % no /Size
+  % no /Type /Catalog
+    /Pages <<
+    %  /Type /Pages
+      /Count 1 % count is required! (it's not by Adobe)
+      /Kids [ <<
+      %  /Type /Page
+         /Contents 1 0 R
+      %  /Parent 2 0 R
+        /Resources <<
+          /Font <<
+            / <<
+              /BaseFont /Arial
+            >>
+          >>
+        >>
+      >> ]
+    >>
+  >>
+>>

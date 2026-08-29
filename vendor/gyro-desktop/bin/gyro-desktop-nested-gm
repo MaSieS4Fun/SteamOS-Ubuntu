@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Desktop Gaming Mode launcher (nested under Plasma).
+set -euo pipefail
+if [[ -x /usr/bin/gyro-desktop-gamescope ]]; then
+  sudo -n /usr/bin/gyro-desktop-gamescope 2>/dev/null || true
+fi
+cleanup() {
+  if [[ -x /usr/bin/gyro-desktop-plasma ]]; then
+    sudo -n /usr/bin/gyro-desktop-plasma 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+if [[ -x /usr/bin/steamos-desktop-gamescope ]]; then
+  exec /usr/bin/steamos-desktop-gamescope "$@"
+fi
+
+export SteamDeck="${SteamDeck:-1}"
+export STEAM_MULTIPLE_XWAYLANDS=1
+export STEAM_USE_MANGOAPP=1
+export ENABLE_GAMESCOPE_WSI="${ENABLE_GAMESCOPE_WSI:-1}"
+export SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0
+unset DISPLAY XAUTHORITY
+
+exec gamescope -e -f \
+  --xwayland-count 2 \
+  --force-composition \
+  --scaler fit --filter linear \
+  --mangoapp -- \
+  steam -steamdeck -steamos3 -gamepadui "$@"

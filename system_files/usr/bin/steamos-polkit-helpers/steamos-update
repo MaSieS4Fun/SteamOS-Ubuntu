@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Steam OS-update hook — no root required; avoid pkexec under greetd (no polkit agent).
+set -euo pipefail
+exec /usr/bin/steamos-update "$@"

@@ -1,0 +1,14 @@
+[Unit]
+Description=SteamOS force Gaming Mode session before greetd (always boot Deck)
+DefaultDependencies=no
+Before=greetd.service display-manager.service
+After=local-fs.target steamos-expand-rootfs.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '/usr/lib/steamos/steam-set-session gamescope-session.desktop; chown -R steam:steam /var/lib/steamos-ubuntu; chmod 0775 /var/lib/steamos-ubuntu; chmod 0664 /var/lib/steamos-ubuntu/*'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=greetd.service
+WantedBy=display-manager.service

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SteamOS Polkit Agent Guard
+Comment=Start polkit-kde after Wayland is up (Kate/Dolphin root save)
+Exec=/usr/libexec/steamos-ubuntu/ensure-plasma-polkit-agent
+X-KDE-autostart-phase=1
+X-KDE-StartupNotify=false
+OnlyShowIn=KDE;
+NoDisplay=true

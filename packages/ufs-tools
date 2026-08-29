@@ -1,0 +1,3 @@
+# Easy UFS Installer needs abootimg to pack/unpack Android boot images.
+# Consumed by bootstrap/finalize when all packages/* lists are installed.
+abootimg

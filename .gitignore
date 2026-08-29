@@ -1,0 +1,49 @@
+# Build artifacts
+/output/
+/vendor/kernel/output/
+/vendor/kernel/.cache/
+/vendor/kernel/.build/
+
+# Vendor build caches (nested clones — never commit)
+/vendor/.cache/
+
+# Prebuilt Steam ROM Manager (~482 MB) — fetch via scripts/fetch-steam-rom-manager.sh
+/vendor/SteamROMManager/linux-arm64-unpacked/
+
+# Apt signing (never commit private key)
+/packaging/apt/.gnupg/
+
+# Deb / apt build output
+/output/debs/
+/output/deb-work/
+/output/apt-repo/
+
+# Local kernel config overrides
+/vendor/kernel/config/local.conf
+
+# IDE / agent (do not publish Cursor/agent metadata)
+.cursor/
+.agent/
+_agent_*
+_search_results.txt
+_apply_live_result.txt
+_run_explore.sh
+
+# Accidental root clutter
+/*.deb
+/mesa bloquear.txt
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Public apt key: packaging/apt/steamos-ubuntu.gpg (commit after keygen)

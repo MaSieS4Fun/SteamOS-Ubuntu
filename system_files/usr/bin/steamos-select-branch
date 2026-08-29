@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Steam "OS Update Channel" hook. Record preference only; steamos-update is a no-op.
+# Must succeed without root: Steam calls this before every "Check for updates".
+# A non-zero exit → SteamUI "Updater check error: 40" / "Error de actualización".
+set -uo pipefail
+
+STEAM_HOME="${STEAM_HOME:-/home/steam}"
+STATE=""
+
+pick_state() {
+  local dir="$1"
+  if mkdir -p "$dir" && [[ -w "$dir" ]]; then
+    STATE="${dir}/update-channel"
+    return 0
+  fi
+  return 1
+}
+
+pick_state "${STEAMOS_STATE_DIR:-/var/lib/steamos-ubuntu}" \
+  || pick_state "${STEAM_HOME}/.local/share/steamos-ubuntu" \
+  || STATE=""
+
+case "${1:-}" in
+  -l)
+    printf '%s\n' rel beta main
+    ;;
+  -c)
+    if [[ -n "$STATE" && -f "$STATE" ]]; then
+      cat "$STATE"
+    elif [[ -f /var/lib/steamos-ubuntu/update-channel ]]; then
+      cat /var/lib/steamos-ubuntu/update-channel
+    else
+      echo rel
+    fi
+    ;;
+  rel|beta|main|stable|rc)
+    if [[ -n "$STATE" ]]; then
+      printf '%s\n' "$1" >"$STATE" || true
+    fi
+    ;;
+  *)
+    echo "usage: steamos-select-branch <-l|-c|rel|beta|main>" >&2
+    exit 1
+    ;;
+esac
+exit 0

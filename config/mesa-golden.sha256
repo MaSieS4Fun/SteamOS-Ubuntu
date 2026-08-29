@@ -1,0 +1,5 @@
+# STORAGE1 reference hashes (Gaming Mode OK). A fresh meson compile of the
+# same Mesa tree will NOT match these MD5s — that is expected.
+# verify-vendor-mesa-stack.sh treats these as advisory unless MESA_REQUIRE_GOLDEN=1.
+39095047bb2b64150c6e9067990d9b6f  usr/lib/aarch64-linux-gnu/libgallium-26.1.6.so
+6c3959915d9a33b3fead433071af2a75  usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so

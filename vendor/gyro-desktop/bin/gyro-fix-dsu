@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+# GYRO-FIX — DSU (qcom-motion) on | off | status | always-on | always-off | set-profile
+set -euo pipefail
+
+STATE_DIR="${GYRO_DESKTOP_STATE:-/var/lib/masi/gyro-desktop}"
+STATE_FILE="${STATE_DIR}/state.ini"
+STEAM_HOME="${STEAM_HOME:-/home/steam}"
+USER_PROFILES="${STEAM_HOME}/.config/gyro-desktop/profiles"
+SYS_PROFILES="${STATE_DIR}/profiles"
+SHARE_PROFILES="/usr/share/gyro-desktop/profiles"
+APPLY_BIN="$(dirname "$0")/gyro-fix-apply"
+[[ -x "$APPLY_BIN" ]] || APPLY_BIN="/usr/bin/gyro-fix-apply"
+
+CALIB_ODIN2="/var/lib/masi/qcom-sensors/odin2/motion-calibration.ini"
+CALIB_THOR="/var/lib/masi/qcom-sensors/thor/motion-calibration.ini"
+
+log() { printf '==> [gyro-fix-dsu] %s\n' "$*" >&2; }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+detect_calib() {
+  if [[ -f /proc/device-tree/compatible ]] &&
+     tr -d '\0' </proc/device-tree/compatible | grep -q 'ayn,thor'; then
+    printf '%s\n' "$CALIB_THOR"
+  else
+    printf '%s\n' "$CALIB_ODIN2"
+  fi
+}
+
+ensure_state() {
+  if [[ "${EUID}" -ne 0 ]]; then
+    return 0
+  fi
+  install -d -m 0755 "$STATE_DIR"
+  if [[ ! -f "$STATE_FILE" ]]; then
+    cat >"$STATE_FILE" <<'EOF'
+[desktop]
+dsu_enabled=false
+dsu_always_on=false
+profile=default
+EOF
+  fi
+  grep -q '^dsu_always_on=' "$STATE_FILE" 2>/dev/null || printf 'dsu_always_on=false\n' >>"$STATE_FILE"
+  grep -q '^profile=' "$STATE_FILE" 2>/dev/null || printf 'profile=default\n' >>"$STATE_FILE"
+}
+
+read_key() {
+  local key="$1" default="${2:-false}"
+  if [[ -f "$STATE_FILE" ]]; then
+    grep -E "^${key}=" "$STATE_FILE" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || echo "$default"
+  else
+    echo "$default"
+  fi
+}
+
+write_key() {
+  local key="$1" val="$2"
+  ensure_state
+  if grep -q "^${key}=" "$STATE_FILE" 2>/dev/null; then
+    sed -i "s/^${key}=.*/${key}=${val}/" "$STATE_FILE"
+  else
+    printf '%s=%s\n' "$key" "$val" >>"$STATE_FILE"
+  fi
+}
+
+find_profile_file() {
+  local name="$1" f
+  for f in \
+    "${USER_PROFILES}/${name}.ini" \
+    "${SYS_PROFILES}/${name}.ini" \
+    "${SHARE_PROFILES}/${name}.ini"; do
+    if [[ -f "$f" ]]; then
+      printf '%s\n' "$f"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Load profile INI [user] into motion-calibration.ini via gyro-fix-apply.
+apply_active_profile() {
+  local name file
+  name="$(read_key profile default)"
+  [[ -n "$name" ]] || name=default
+  if ! file="$(find_profile_file "$name")"; then
+    log "WARN: profile '${name}' not found — keeping current calibration"
+    return 0
+  fi
+  log "Applying profile '${name}' from ${file}"
+  # shellcheck disable=SC2046
+  eval "$(python3 - "$file" <<'PY'
+import configparser, shlex, sys
+cp = configparser.ConfigParser()
+cp.read(sys.argv[1])
+u = cp["user"] if "user" in cp else {}
+def b(key, legacy=None):
+    if key in u:
+        return "1" if u.get(key, "").lower() in ("1", "true", "yes") else "0"
+    if legacy and legacy in u:
+        return "1" if u.get(legacy, "").lower() in ("1", "true", "yes") else "0"
+    return "0"
+print("export GYRO_SENS=" + shlex.quote(u.get("gyro_sensitivity", "1.0")))
+print("export ACCEL_SENS=" + shlex.quote(u.get("accel_sensitivity", "1.0")))
+print("export INVERT_GYRO_H=" + shlex.quote(b("invert_gyro_horizontal", "invert_horizontal")))
+print("export INVERT_GYRO_V=" + shlex.quote(b("invert_gyro_vertical", "invert_vertical")))
+print("export INVERT_ACCEL_H=" + shlex.quote(b("invert_accel_horizontal", "invert_horizontal")))
+print("export INVERT_ACCEL_V=" + shlex.quote(b("invert_accel_vertical", "invert_vertical")))
+PY
+)"
+  export PROFILE="$name"
+  export RESTART=0
+  "$APPLY_BIN"
+}
+
+motion_active() {
+  systemctl is-active --quiet qcom-motion.service
+}
+
+dsu_port_open() {
+  ss -uln 2>/dev/null | grep -q ':26760 ' || \
+    ss -uln 2>/dev/null | grep -q ':26760$'
+}
+
+start_motion() {
+  apply_active_profile || true
+  systemctl start masi-qcom-qrtr.service 2>/dev/null || true
+  systemctl start masi-qcom-sensors.service 2>/dev/null || true
+  systemctl restart qcom-motion.service 2>/dev/null || systemctl start qcom-motion.service
+  sleep 1
+  motion_active || die "qcom-motion failed to start"
+}
+
+cmd_status() {
+  local wanted always active port profile
+  wanted="$(read_key dsu_enabled false)"
+  always="$(read_key dsu_always_on false)"
+  profile="$(read_key profile default)"
+  if motion_active; then active=true; else active=false; fi
+  if dsu_port_open; then port=true; else port=false; fi
+  printf 'wanted=%s always_on=%s active=%s port_26760=%s profile=%s calib=%s\n' \
+    "$wanted" "$always" "$active" "$port" "$profile" "$(detect_calib)"
+}
+
+cmd_set_profile() {
+  local name="${1:-}"
+  [[ "${EUID}" -eq 0 ]] || die "run as root"
+  [[ -n "$name" ]] || die "usage: $0 set-profile NAME"
+  [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || die "invalid profile name (use letters, numbers, _-)"
+  find_profile_file "$name" >/dev/null || die "profile not found: ${name}"
+  write_key profile "$name"
+  apply_active_profile
+  if motion_active; then
+    systemctl restart qcom-motion.service
+    log "Profile '${name}' active and qcom-motion restarted"
+  else
+    log "Profile '${name}' saved as active (start DSU to use it)"
+  fi
+  cmd_status
+}
+
+cmd_on() {
+  [[ "${EUID}" -eq 0 ]] || die "run as root (sudo gyro-fix-dsu on)"
+  write_key dsu_enabled true
+  if [[ "$(read_key dsu_always_on false)" == "true" ]]; then
+    systemctl enable qcom-motion.service 2>/dev/null || true
+  fi
+  start_motion
+  log "DSU on (profile=$(read_key profile default))"
+  cmd_status
+}
+
+cmd_off() {
+  [[ "${EUID}" -eq 0 ]] || die "run as root (sudo gyro-fix-dsu off)"
+  write_key dsu_enabled false
+  systemctl stop qcom-motion.service 2>/dev/null || true
+  if [[ "$(read_key dsu_always_on false)" != "true" ]]; then
+    systemctl disable qcom-motion.service 2>/dev/null || true
+  fi
+  log "DSU off (qcom-motion stopped for this session)"
+  cmd_status
+}
+
+cmd_always_on() {
+  [[ "${EUID}" -eq 0 ]] || die "run as root"
+  write_key dsu_always_on true
+  write_key dsu_enabled true
+  systemctl enable qcom-motion.service 2>/dev/null || true
+  start_motion
+  log "DSU always-on (boot + profile=$(read_key profile default))"
+  cmd_status
+}
+
+cmd_always_off() {
+  [[ "${EUID}" -eq 0 ]] || die "run as root"
+  write_key dsu_always_on false
+  if [[ "$(read_key dsu_enabled false)" != "true" ]]; then
+    systemctl disable qcom-motion.service 2>/dev/null || true
+  fi
+  log "DSU always-on cleared"
+  cmd_status
+}
+
+case "${1:-}" in
+  on) cmd_on ;;
+  off) cmd_off ;;
+  always-on) cmd_always_on ;;
+  always-off) cmd_always_off ;;
+  set-profile) cmd_set_profile "${2:-}" ;;
+  status) cmd_status ;;
+  calib-path) detect_calib ;;
+  *)
+    echo "Usage: $0 {on|off|always-on|always-off|set-profile NAME|status|calib-path}"
+    exit 2
+    ;;
+esac

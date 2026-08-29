@@ -1,0 +1,4 @@
+# Plasma / Qt defaults for SteamOS-Ubuntu handheld (Odin 2 class).
+# Users can change anything later in System Settings.
+[KScreen]
+ScaleFactor=1.5

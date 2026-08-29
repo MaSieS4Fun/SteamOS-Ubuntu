@@ -1,0 +1,3 @@
+# Passwordless helpers for GYRO-FIX (desktop DSU toggle + settings).
+steam ALL=(root) NOPASSWD: /usr/bin/gyro-fix-dsu, /usr/bin/gyro-fix-apply, /usr/bin/gyro-desktop-plasma, /usr/bin/gyro-desktop-gamescope, /usr/bin/gyro-desktop-nested-gm
+steam ALL=(root) NOPASSWD: /usr/share/gyro-desktop/bin/gyro-fix-dsu, /usr/share/gyro-desktop/bin/gyro-fix-apply, /usr/share/gyro-desktop/bin/gyro-desktop-plasma, /usr/share/gyro-desktop/bin/gyro-desktop-gamescope, /usr/share/gyro-desktop/bin/gyro-desktop-nested-gm

@@ -1,0 +1,280 @@
+#!/usr/bin/env bash
+# Nested gamescope Gaming Mode under Plasma Desktop.
+#
+# Right after Plasma login (or a recent crash), gamescope -e often SEGV (rc=139).
+# After Plasma/GPU settle it works. Do NOT use --backend wayland here.
+set +e
+
+SESSION_LOG="${SESSION_LOG:-/var/log/steamos-session.log}"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}"
+RUNTIME_LOG="${RUNTIME_DIR}/steamos-desktop-gamescope.log"
+STEAM_HOME="${STEAM_HOME:-${HOME:-/home/steam}}"
+PLUGIN="${STEAM_HOME}/homebrew/services/PluginLoader"
+MAX_WAIT_SECS=20
+MIN_PLASMA_AGE_SECS="${MIN_PLASMA_AGE_SECS:-12}"
+SETTLE_SECS=2
+POST_CLEAN_SECS=1
+MAX_ATTEMPTS=4
+EARLY_FAIL_SECS=4
+
+log() {
+  local msg="desktop-gamescope: $*"
+  printf '%s\n' "$msg"
+  printf '%s\n' "$msg" >>"$SESSION_LOG" 2>/dev/null || true
+  printf '%s\n' "$msg" >>"$RUNTIME_LOG" 2>/dev/null || true
+}
+
+if [[ -x /usr/bin/gyro-desktop-gamescope ]]; then
+  log "apply Gaming Mode pad (deck-uhid + IMU)"
+  sudo -n /usr/bin/gyro-desktop-gamescope 2>/dev/null || true
+fi
+trap 'if [[ -x /usr/bin/gyro-desktop-plasma ]]; then sudo -n /usr/bin/gyro-desktop-plasma 2>/dev/null || true; fi' EXIT
+
+wayland_ready() {
+  local sock disp
+  disp="${WAYLAND_DISPLAY:-}"
+  if [[ -n "$disp" ]]; then
+    if [[ "$disp" == /* ]]; then
+      [[ -S "$disp" ]] && return 0
+    else
+      [[ -S "${RUNTIME_DIR}/${disp}" ]] && return 0
+    fi
+  fi
+  for sock in "${RUNTIME_DIR}"/wayland-*; do
+    [[ -S "$sock" ]] && return 0
+  done
+  return 1
+}
+
+kwin_pid() {
+  pgrep -x kwin_wayland 2>/dev/null | head -1
+}
+
+kwin_ready() {
+  [[ -n "$(kwin_pid)" ]] && return 0
+  pgrep -x kwin_wayland_wrapper >/dev/null 2>&1 && return 0
+  return 1
+}
+
+kwin_age_secs() {
+  local pid etimes
+  pid="$(kwin_pid)"
+  [[ -n "$pid" ]] || { printf '%s\n' 9999; return 0; }
+  etimes="$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')"
+  if [[ "$etimes" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "$etimes"
+  else
+    printf '%s\n' 9999
+  fi
+}
+
+wait_plasma() {
+  local i max=$((MAX_WAIT_SECS * 2))
+  log "waiting for Plasma Wayland + kwin (max ${MAX_WAIT_SECS}s)"
+  for ((i = 1; i <= max; i++)); do
+    if wayland_ready && kwin_ready; then
+      log "Plasma ready (WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset} DISPLAY=${DISPLAY:-unset})"
+      return 0
+    fi
+    sleep 0.5
+  done
+  log "WARNING: Plasma wait timed out — continuing"
+  return 1
+}
+
+wait_plasma_warm() {
+  local age need
+  age="$(kwin_age_secs)"
+  if (( age >= MIN_PLASMA_AGE_SECS )); then
+    log "Plasma warm (kwin age ${age}s >= ${MIN_PLASMA_AGE_SECS}s)"
+    return 0
+  fi
+  need=$((MIN_PLASMA_AGE_SECS - age))
+  log "Plasma still cold (kwin age ${age}s) — waiting ${need}s more"
+  sleep "$need"
+}
+
+cleanup_nested_session() {
+  local reason="${1:-pre-launch}"
+  log "cleanup nested leftovers (${reason})"
+  pkill -TERM -f '/steamrtarm64/steam( |$)' 2>/dev/null || true
+  pkill -TERM -f 'steamwebhelper' 2>/dev/null || true
+  pkill -x mangoapp 2>/dev/null || true
+  pkill -x gamescope 2>/dev/null || true
+  sleep 0.5
+  pkill -KILL -f 'steamwebhelper' 2>/dev/null || true
+  pkill -KILL -f '/steamrtarm64/steam( |$)' 2>/dev/null || true
+  pkill -9 -x mangoapp 2>/dev/null || true
+  pkill -9 -x gamescope 2>/dev/null || true
+  sleep "$POST_CLEAN_SECS"
+}
+
+decky_port_ready() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS --max-time 1 "http://127.0.0.1:1337/" >/dev/null 2>&1 && return 0
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn 2>/dev/null | grep -q ':1337 ' && return 0
+  fi
+  return 1
+}
+
+ensure_decky_start_only() {
+  [[ -x "$PLUGIN" ]] || return 0
+  if decky_port_ready; then
+    log "PluginLoader already on :1337 — not restarting"
+    return 0
+  fi
+  log "PluginLoader :1337 down — starting plugin_loader"
+  sudo -n env -u DBUS_SESSION_BUS_ADDRESS systemctl --no-ask-password \
+    start plugin_loader.service 2>/dev/null || true
+  sleep 0.5
+}
+
+pick_gamescope() {
+  if [[ -x /usr/local/bin/gamescope ]]; then
+    printf '%s\n' /usr/local/bin/gamescope
+  elif command -v gamescope >/dev/null 2>&1; then
+    command -v gamescope
+  else
+    printf '%s\n' gamescope
+  fi
+}
+
+ensure_mangoapp_conf() {
+  local sys_mango="/usr/share/sm8550-steamos/MangoHud/steam"
+  local user_mango="${HOME}/.config/MangoHud/steam"
+  local steam_root="${STEAM_HOME}/.local/share/Steam"
+  [[ -d "${STEAM_HOME}/.steam/steam" ]] && steam_root="${STEAM_HOME}/.steam/steam"
+  local steam_fallback="${steam_root}/config/mangohud.conf"
+
+  mkdir -p "$user_mango" "${steam_root}/config"
+  if [[ ! -f "${user_mango}/presets.conf" && -f "${sys_mango}/presets.conf" ]]; then
+    install -D -m 0644 "${sys_mango}/presets.conf" "${user_mango}/presets.conf"
+  fi
+  if [[ ! -f "${user_mango}/MangoHud.conf" ]]; then
+    if [[ -f "${sys_mango}/MangoHud.conf" ]]; then
+      install -D -m 0644 "${sys_mango}/MangoHud.conf" "${user_mango}/MangoHud.conf"
+    else
+      printf '%s\n' 'control=mangoapp' 'preset=0' >"${user_mango}/MangoHud.conf"
+    fi
+  fi
+  if grep -qE '^(control=mangohud|nis_steam_sharpness|fsr_steam_sharpness|no_display)' \
+      "${user_mango}/MangoHud.conf" 2>/dev/null; then
+    log "rewriting MangoHud.conf → control=mangoapp"
+    printf '%s\n' 'control=mangoapp' 'preset=0' >"${user_mango}/MangoHud.conf"
+  fi
+  chmod 0644 "${user_mango}/MangoHud.conf" 2>/dev/null || true
+  if [[ -e "$steam_fallback" && ! "$steam_fallback" -ef "${user_mango}/MangoHud.conf" ]]; then
+    rm -f "$steam_fallback"
+  fi
+  if [[ ! -e "$steam_fallback" ]]; then
+    ln "${user_mango}/MangoHud.conf" "$steam_fallback" 2>/dev/null \
+      || cp -a "${user_mango}/MangoHud.conf" "$steam_fallback"
+  fi
+  export MANGOHUD_CONFIG=read_cfg
+  export MANGOHUD_CONFIGFILE="${user_mango}/MangoHud.conf"
+  export MANGOHUD_PRESETSFILE="${user_mango}/presets.conf"
+}
+
+nested_size_from_panel() {
+  local best_area=0 mode w h area
+  PANEL_W=1080
+  PANEL_H=1920
+  for card in /sys/class/drm/card*-DSI-* /sys/class/drm/card*-eDP-*; do
+    [[ -e "$card/status" ]] || continue
+    [[ "$(cat "$card/status" 2>/dev/null || true)" == connected ]] || continue
+    mode="$(head -1 "$card/modes" 2>/dev/null || true)"
+    if [[ "$mode" =~ ^([0-9]+)x([0-9]+) ]]; then
+      w="${BASH_REMATCH[1]}"
+      h="${BASH_REMATCH[2]}"
+      area=$((w * h))
+      if (( area > best_area )); then
+        best_area=$area
+        PANEL_W=$w
+        PANEL_H=$h
+      fi
+    fi
+  done
+  if (( PANEL_H > PANEL_W )); then
+    NESTED_W="${GAMESCOPE_WIDTH:-$PANEL_H}"
+    NESTED_H="${GAMESCOPE_HEIGHT:-$PANEL_W}"
+  else
+    NESTED_W="${GAMESCOPE_WIDTH:-$PANEL_W}"
+    NESTED_H="${GAMESCOPE_HEIGHT:-$PANEL_H}"
+  fi
+  NESTED_HZ="${GAMESCOPE_REFRESH:-60}"
+  log "nested size ${NESTED_W}x${NESTED_H}@${NESTED_HZ} (panel ${PANEL_W}x${PANEL_H})"
+}
+
+prepare_nested_env() {
+  ensure_mangoapp_conf
+  export SteamDeck="${SteamDeck:-1}"
+  export STEAM_MULTIPLE_XWAYLANDS=1
+  export STEAM_USE_MANGOAPP=1
+  export STEAM_GAMESCOPE_FANCY_SCALING_SUPPORT=1
+  export ENABLE_GAMESCOPE_WSI="${ENABLE_GAMESCOPE_WSI:-1}"
+  export SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0
+
+  if [[ -z "${WAYLAND_DISPLAY:-}" ]] || ! wayland_ready; then
+    local sock
+    for sock in "${RUNTIME_DIR}"/wayland-*; do
+      if [[ -S "$sock" ]]; then
+        export WAYLAND_DISPLAY="$(basename "$sock")"
+        break
+      fi
+    done
+  fi
+
+  # Do not pass Plasma DISPLAY=:0 — collides with --xwayland-count 2 (SEGV).
+  unset DISPLAY XAUTHORITY
+  unset GAMESCOPE_WAYLAND_DISPLAY GAMESCOPE_STATS || true
+  log "env: WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset} gamescope DISPLAY=unset"
+}
+
+GAMESCOPE="$(pick_gamescope)"
+log "start nested Gaming Mode (gamescope=$GAMESCOPE uid=$(id -u))"
+
+wait_plasma || true
+wait_plasma_warm
+log "settle ${SETTLE_SECS}s"
+sleep "$SETTLE_SECS"
+
+cleanup_nested_session "before-first-attempt"
+ensure_decky_start_only
+nested_size_from_panel
+
+attempt=1
+backoff=2
+while (( attempt <= MAX_ATTEMPTS )); do
+  prepare_nested_env
+  log "launch attempt ${attempt}/${MAX_ATTEMPTS}: nested ${NESTED_W}x${NESTED_H} xwayland-count=2"
+  start_ts=$(date +%s)
+  # QAM fix: dual Xwayland + fixed size. Never --force-windows-fullscreen under Plasma.
+  "$GAMESCOPE" -e -f \
+    -W "$NESTED_W" -H "$NESTED_H" -w "$NESTED_W" -h "$NESTED_H" -r "$NESTED_HZ" \
+    --xwayland-count 2 \
+    --force-composition \
+    --scaler fit --filter linear \
+    --mangoapp -- \
+    steam -steamdeck -steamos3 -gamepadui
+  rc=$?
+  end_ts=$(date +%s)
+  elapsed=$((end_ts - start_ts))
+  log "gamescope exited rc=${rc} after ${elapsed}s (attempt ${attempt})"
+
+  cleanup_nested_session "after-exit-rc=${rc}"
+
+  if (( attempt < MAX_ATTEMPTS )) \
+    && (( elapsed < EARLY_FAIL_SECS )) \
+    && (( rc == 139 || rc == 134 || rc == 1 )); then
+    log "early SEGV/ABRT — soft retry in ${backoff}s"
+    sleep "$backoff"
+    backoff=$((backoff + 2))
+    attempt=$((attempt + 1))
+    continue
+  fi
+  exit "$rc"
+done
+
+exit 1

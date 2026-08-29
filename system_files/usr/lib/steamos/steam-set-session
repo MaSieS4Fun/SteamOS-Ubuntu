@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Write next greetd session (Steam Deck / CachyOS steam-set-session adapted for greetd).
+# Prefer direct write when /var/lib/steamos-ubuntu is writable by steam;
+# otherwise run via pkexec (polkit).
+set -euo pipefail
+
+SESSION_DIR=/var/lib/steamos-ubuntu
+SESSION_FILE="${SESSION_DIR}/session"
+RAW="${1:-gamescope-session.desktop}"
+
+case "$RAW" in
+  plasma.desktop|plasma|desktop|kde)
+    OUT=plasma
+    ;;
+  plasma-mobile.desktop|plasma-mobile|mobile)
+    OUT=plasma-mobile
+    ;;
+  gamescope-session.desktop|gamescope-session|gamescope|gamepadui|steam)
+    OUT=gamescope-session
+    ;;
+  *)
+    OUT="${RAW%.desktop}"
+    ;;
+esac
+
+mkdir -p "$SESSION_DIR" 2>/dev/null || true
+# Keep dir writable by the steam user across boots
+if [[ "$(id -u)" -eq 0 ]]; then
+  chown steam:steam "$SESSION_DIR" 2>/dev/null || true
+  chmod 0775 "$SESSION_DIR" 2>/dev/null || true
+fi
+
+printf '%s\n' "$OUT" >"$SESSION_FILE"
+chmod 664 "$SESSION_FILE" 2>/dev/null || true
+if [[ "$(id -u)" -eq 0 ]]; then
+  chown steam:steam "$SESSION_FILE" 2>/dev/null || true
+fi
+echo "steamos next session → ${OUT} (${SESSION_FILE})"

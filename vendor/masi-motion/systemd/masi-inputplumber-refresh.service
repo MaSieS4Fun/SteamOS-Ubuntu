@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh InputPlumber once qcom-motion IMU is ready
+Documentation=file:/usr/share/doc/masi-motion/README.txt
+After=qcom-motion.service
+Requires=qcom-motion.service
+ConditionPathExists=/run/masi/qcom-motion.ready
+
+[Service]
+Type=oneshot
+# One-shot refresh when motion bridge (re)starts — never from inside inputplumber.service.
+ExecStart=/bin/sh -c 'sleep 1; systemctl is-active --quiet inputplumber.service && systemctl try-restart inputplumber.service || true'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

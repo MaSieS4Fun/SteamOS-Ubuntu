@@ -1,0 +1,13 @@
+/* Allow steam user to manage NetworkManager (Deck OOBE Wi-Fi inside Steam). */
+polkit.addRule(function (action, subject) {
+  if (subject.user !== "steam") {
+    return undefined;
+  }
+  if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0) {
+    return polkit.Result.YES;
+  }
+  if (action.id.indexOf("org.freedesktop.ModemManager1.") === 0) {
+    return polkit.Result.YES;
+  }
+  return undefined;
+});

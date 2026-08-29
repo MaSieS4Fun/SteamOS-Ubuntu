@@ -1,0 +1,12 @@
+// Allow steam to suspend without interactive auth (Gaming Mode power key).
+polkit.addRule(function(action, subject) {
+    if (subject.user !== "steam") {
+        return;
+    }
+    if (action.id === "org.freedesktop.login1.suspend" ||
+        action.id === "org.freedesktop.login1.suspend-multiple-sessions" ||
+        action.id === "org.freedesktop.login1.hibernate" ||
+        action.id === "org.freedesktop.login1.hibernate-multiple-sessions") {
+        return polkit.Result.YES;
+    }
+});

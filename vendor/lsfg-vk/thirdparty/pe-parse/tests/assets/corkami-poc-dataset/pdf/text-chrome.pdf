@@ -1,0 +1,38 @@
+%a PDF with text specifically for Chrome's PDF Viewer
+% special thanks to Jonas Magazinius
+
+% Ange Albertini, BSD licence 2013-2018
+
+%PDF - truncated chrome signature
+
+1 0 obj % object 1 is both /Root, and /Content
+<<
+    % no /Type /Catalog
+	/Pages <<
+        % no /Count
+        /Kids [ <<
+            % no /Parent
+            % no /Type /Page
+            % no /Resources, no /Font...
+            /Contents 1 0 R
+            >>
+        ]
+    >>
+    % no /Length
+>>
+stream
+% no BT
+  55 Tf % no font reference?
+  10 400 Td
+  (http://www.corkami.com)'
+% no ET
+% no endstr34m
+endobj
+
+% no xref
+trailer <<
+    /Root 1 0 R
+     % no /Size
+>>
+% no startxref
+% no EOF

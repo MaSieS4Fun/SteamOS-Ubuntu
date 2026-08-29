@@ -1,0 +1,9 @@
+# Defaults for Plasma Wayland on the handheld (copied once if ~/.config/kwinrc missing).
+[Xwayland]
+Scale=1.5
+
+[Wayland]
+# KWin text-input-v3 virtual keyboard (Maliit). Do not set QT_IM_MODULE under Plasma
+# Wayland — that bypasses this InputMethod path and the OSK never shows.
+InputMethod[$e]=/usr/share/applications/com.github.maliit.keyboard.desktop
+VirtualKeyboardEnabled=true

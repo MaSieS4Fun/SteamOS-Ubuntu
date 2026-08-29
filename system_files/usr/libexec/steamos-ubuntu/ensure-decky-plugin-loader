@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Ensure Decky PluginLoader injector can see Steam Gamepad UI.
+# Boot-time PluginLoader gives up injecting after ~30s if Steam is not running.
+set +e
+
+STEAM_HOME="${STEAM_HOME:-/home/steam}"
+PLUGIN="${STEAM_HOME}/homebrew/services/PluginLoader"
+UNIT=plugin_loader.service
+SESSION_LOG="${SESSION_LOG:-/var/log/steamos-session.log}"
+MODE="${1:---before-steam}"
+STEAMROOT="${STEAM_HOME}/.local/share/Steam"
+
+# Decky injects via Chrome DevTools on :8080 — requires this Steam marker file.
+mkdir -p "$STEAMROOT"
+touch "${STEAMROOT}/.cef-enable-remote-debugging"
+chown steam:steam "${STEAMROOT}/.cef-enable-remote-debugging" 2>/dev/null || true
+
+log() {
+  printf 'ensure-decky: %s\n' "$*" >>"$SESSION_LOG" 2>/dev/null || true
+}
+
+systemctl_plugin() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    env -u DBUS_SESSION_BUS_ADDRESS systemctl --no-ask-password "$@"
+    return $?
+  fi
+  # IMPORTANT: sudoers allows systemctl only — do not wrap as `sudo env systemctl`
+  # or the argv[0] becomes env and NOPASSWD will not match.
+  env -u DBUS_SESSION_BUS_ADDRESS sudo -n systemctl --no-ask-password "$@"
+}
+
+decky_port_ready() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn 2>/dev/null | grep -q ':1337 ' && return 0
+  fi
+  if command -v curl >/dev/null 2>&1; then
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 1 "http://127.0.0.1:1337/" 2>/dev/null || true)"
+    [[ "$code" =~ ^[2345][0-9][0-9]$ ]] && return 0
+  fi
+  return 1
+}
+
+main_pid() {
+  systemctl_plugin show -p MainPID --value "$UNIT" 2>/dev/null | tr -d '[:space:]'
+}
+
+wait_for_decky() {
+  local i max="${1:-60}"
+  for ((i = 1; i <= max; i++)); do
+    if decky_port_ready; then
+      log "PluginLoader ready on :1337 (${i}/${max})"
+      return 0
+    fi
+    sleep 0.25
+  done
+  log "WARNING: PluginLoader not responding on :1337"
+  return 1
+}
+
+steam_running() {
+  pgrep -u "${USER:-steam}" -f 'steamwebhelper' >/dev/null 2>&1 \
+    || pgrep -u steam -f 'steamwebhelper' >/dev/null 2>&1
+}
+
+restart_loader() {
+  local old new
+  old="$(main_pid)"
+  [[ -z "$old" || "$old" == "0" ]] && old="none"
+  log "Restarting ${UNIT} (old MainPID=${old})"
+  if ! systemctl_plugin restart "$UNIT"; then
+    log "ERROR: systemctl restart ${UNIT} failed (check /etc/sudoers.d/99-steam-decky-plugin-loader)"
+    return 1
+  fi
+  sleep 0.5
+  new="$(main_pid)"
+  log "New MainPID=${new:-unknown}"
+  if [[ -n "$new" && "$new" != "0" && "$new" != "$old" ]]; then
+    return 0
+  fi
+  # Still ok if port comes up
+  wait_for_decky 40
+}
+
+if [[ -x /usr/libexec/steamos-ubuntu/sync-decky-bundled-plugins.sh ]]; then
+  STEAM_USER="${USER:-steam}"
+  [[ "$(id -u)" -eq 0 ]] && STEAM_USER=steam
+  STEAM_HOME="${STEAM_HOME:-/home/${STEAM_USER}}" \
+    STEAM_USER="$STEAM_USER" \
+    /usr/libexec/steamos-ubuntu/sync-decky-bundled-plugins.sh || true
+fi
+
+if [[ ! -x "$PLUGIN" ]]; then
+  log "PluginLoader not installed (${PLUGIN}) — skip"
+  exit 0
+fi
+
+case "$MODE" in
+  --force-restart|--before-steam|"")
+    restart_loader || exit 1
+    wait_for_decky 60 || exit 1
+    exit 0
+    ;;
+  --when-steam)
+    log "Waiting for steamwebhelper to re-arm Decky injector"
+    i=0
+    while (( i < 180 )); do
+      if steam_running; then
+        log "steamwebhelper detected"
+        sleep 3
+        restart_loader || true
+        wait_for_decky 40 || true
+        exit 0
+      fi
+      i=$((i + 1))
+      sleep 1
+    done
+    log "WARNING: steamwebhelper not seen"
+    exit 1
+    ;;
+  --start-only)
+    systemctl_plugin start "$UNIT" 2>/dev/null || true
+    wait_for_decky 40 || exit 1
+    exit 0
+    ;;
+  *)
+    log "Usage: ensure-decky-plugin-loader [--before-steam|--when-steam|--start-only]"
+    exit 2
+    ;;
+esac

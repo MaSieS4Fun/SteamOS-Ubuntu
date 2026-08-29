@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# SM8550 handhelds (Odin 2 / Thor / RP6): keep the internal DSI panel on and
+# never light HDMI/DP as the only (or mirrored) output.
+#
+# Plasma/KWin previously persisted a layout that disabled DSI-1 and cloned
+# the Samsung HDMI (DP-1) — black built-in screen, audio still plays.
+#
+# Thor: if thorch-display-setup exists, use it for the vertical dual-DSI layout
+# after HDMI is disabled. Gamescope itself is single-output (largest DSI).
+set -euo pipefail
+
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+export DISPLAY="${DISPLAY:-:0}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+if [[ -z "${WAYLAND_DISPLAY:-}" && -S "${XDG_RUNTIME_DIR}/wayland-0" ]]; then
+	export WAYLAND_DISPLAY=wayland-0
+fi
+
+allow_hdmi="${GAMESCOPE_ALLOW_HDMI:-0}"
+
+kscreen_outputs() {
+	kscreen-doctor -o 2>/dev/null | sed -E 's/\x1b\[[0-9;]*m//g' || true
+}
+
+disable_external() {
+	command -v kscreen-doctor >/dev/null 2>&1 || return 0
+	local args=()
+	local line name
+	while IFS= read -r line; do
+		name="$(awk '{print $3}' <<<"$line")"
+		case "$name" in
+			DP-*|HDMI-A-*|HDMI-*)
+				args+=( "output.${name}.disable" )
+				;;
+		esac
+	done < <(kscreen_outputs | grep -E '^Output:' || true)
+	if ((${#args[@]})); then
+		kscreen-doctor "${args[@]}" >/dev/null 2>&1 || true
+	fi
+}
+
+enable_internal() {
+	command -v kscreen-doctor >/dev/null 2>&1 || return 0
+	local args=()
+	local line name
+	while IFS= read -r line; do
+		name="$(awk '{print $3}' <<<"$line")"
+		case "$name" in
+			DSI-*|eDP-*)
+				args+=( "output.${name}.enable" "output.${name}.rotation.right" )
+				;;
+		esac
+	done < <(kscreen_outputs | grep -E '^Output:' || true)
+	if ((${#args[@]})); then
+		kscreen-doctor "${args[@]}" >/dev/null 2>&1 || true
+	fi
+}
+
+strip_kwin_hdmi_primary() {
+	local cfg="${HOME}/.config/kwinoutputconfig.json"
+	[[ -f "$cfg" ]] || return 0
+	python3 - "$cfg" <<'PY' || true
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.load(open(path))
+except Exception:
+    sys.exit(0)
+outputs = next((b.get("data") for b in data if b.get("name") == "outputs"), None)
+setups = next((b.get("data") for b in data if b.get("name") == "setups"), None)
+if not outputs or setups is None:
+    sys.exit(0)
+dsi_idx = [i for i, o in enumerate(outputs) if str(o.get("connectorName", "")).startswith(("DSI-", "eDP-"))]
+ext_idx = [i for i, o in enumerate(outputs) if str(o.get("connectorName", "")).startswith(("DP-", "HDMI"))]
+changed = False
+for setup in setups:
+    outs = setup.get("outputs") or []
+    for entry in outs:
+        idx = entry.get("outputIndex")
+        if idx in ext_idx:
+            if entry.get("enabled") is not False or entry.get("priority", 0) >= 0:
+                entry["enabled"] = False
+                entry["priority"] = -1
+                changed = True
+        if idx in dsi_idx:
+            if entry.get("enabled") is not True or entry.get("priority", 0) != 0:
+                entry["enabled"] = True
+                entry["priority"] = 0
+                entry.setdefault("position", {"x": 0, "y": 0})
+                changed = True
+if changed:
+    json.dump(data, open(path, "w"), indent=4)
+    open(path, "a").write("\n")
+PY
+}
+
+# Drop KScreen "replicate DSI onto HDMI" control files.
+strip_kscreen_replicate() {
+	local dir="${HOME}/.local/share/kscreen/control/configs"
+	[[ -d "$dir" ]] || return 0
+	local f
+	for f in "$dir"/*; do
+		[[ -f "$f" ]] || continue
+		if grep -q replicate-name "$f" 2>/dev/null; then
+			python3 - "$f" <<'PY' || true
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.load(open(path))
+except Exception:
+    sys.exit(0)
+outs = data.get("outputs") or []
+changed = False
+for o in outs:
+    if "replicate-hash" in o or "replicate-name" in o:
+        o.pop("replicate-hash", None)
+        o.pop("replicate-name", None)
+        changed = True
+if changed:
+    json.dump(data, open(path, "w"), indent=4)
+    open(path, "a").write("\n")
+PY
+		fi
+	done
+}
+
+strip_kwin_hdmi_primary
+strip_kscreen_replicate
+
+if [[ "$allow_hdmi" == "1" ]]; then
+	exit 0
+fi
+
+if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v kscreen-doctor >/dev/null 2>&1; then
+	export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
+	export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+	disable_external
+	if command -v thorch-display-setup >/dev/null 2>&1 \
+		&& [[ -e /sys/class/drm/card0-DSI-1/status && -e /sys/class/drm/card0-DSI-2/status ]]; then
+		thorch-display-setup || enable_internal
+	else
+		enable_internal
+	fi
+	exit 0
+fi
+
+if command -v xrandr >/dev/null 2>&1; then
+	xrandr --output DP-1 --off --output HDMI-A-1 --off 2>/dev/null || true
+	if [[ -e /sys/class/drm/card0-DSI-2/status ]]; then
+		xrandr --output DSI-2 --auto --rotate right --primary --output DSI-1 --auto --rotate right --below DSI-2 2>/dev/null \
+			|| xrandr --output DSI-1 --auto --rotate right --primary 2>/dev/null || true
+	else
+		xrandr --output DSI-1 --auto --rotate right --primary 2>/dev/null || true
+	fi
+fi

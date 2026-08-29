@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Desktop Gaming Mode
+Comment=Desktop Steam Gaming Mode (nested gamescope)
+Exec=gyro-desktop-nested-gm
+Icon=/home/steam/.local/share/Steam/public/steam_tray_48.tga
+Terminal=false
+Type=Application
+Categories=Game;
+StartupNotify=true

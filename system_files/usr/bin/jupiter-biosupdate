@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# No Steam Deck BIOS on SM8550 — succeed quietly when Steam probes it.
+exit 0

@@ -1,0 +1,22 @@
+# Image ships Brave only (official Brave apt). Block Ubuntu browser packages
+# from being auto-pulled as recommends; user can still install Mozilla Firefox
+# intentionally after the Mozilla repo is configured.
+Package: firefox
+Pin: release o=Ubuntu
+Pin-Priority: -1
+
+Package: firefox-esr
+Pin: release o=Ubuntu
+Pin-Priority: -1
+
+Package: chromium-browser
+Pin: release o=Ubuntu
+Pin-Priority: -1
+
+Package: chromium
+Pin: release o=Ubuntu
+Pin-Priority: -1
+
+Package: epiphany-browser
+Pin: release o=Ubuntu
+Pin-Priority: -1

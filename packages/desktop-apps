@@ -1,0 +1,28 @@
+# Desktop extras for Plasma Mode (image bake).
+# Brave comes from build_files/30 (official repo). Flatpak Flathub in 40-desktop-polish.
+vlc
+vlc-plugin-base
+antimicrox
+gamemode
+libgamemode0
+libgamemodeauto0
+flatpak
+plasma-discover
+plasma-discover-backend-flatpak
+plasma-discover-backend-fwupd
+bubblewrap
+xdg-desktop-portal
+xdg-desktop-portal-kde
+# System Monitor sensors (keep in lockstep with plasma-systemmonitor)
+plasma-systemmonitor
+ksystemstats
+libksysguard-bin
+qml6-module-org-kde-ksysguard
+# On-screen keyboard (Plasma 6 needs Qt6; Qt5 kept for older clients)
+maliit-keyboard
+maliit-server-qt5
+maliit-inputcontext-qt5
+libmaliit-plugins2
+maliit-server-qt6
+maliit-inputcontext-qt6
+libmaliit6-plugins2

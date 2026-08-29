@@ -1,0 +1,17 @@
+# Completely refuse snapd and snap transitional packages.
+# Without this, Ubuntu's "firefox" / "chromium" metapackages pull snap.
+Package: snapd
+Pin: release a=*
+Pin-Priority: -1
+
+Package: snapd-xdg-open
+Pin: release a=*
+Pin-Priority: -1
+
+Package: ubuntu-core-launcher
+Pin: release a=*
+Pin-Priority: -1
+
+Package: snap-confine
+Pin: release a=*
+Pin-Priority: -1

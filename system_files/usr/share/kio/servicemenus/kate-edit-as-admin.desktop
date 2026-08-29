@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=all/allfiles;
+Actions=editAsAdmin;
+X-KDE-Priority=TopLevel
+
+[Desktop Action editAsAdmin]
+Name=Edit as Administrator (Kate)
+Name[es]=Editar como administrador (Kate)
+Icon=kate
+Exec=kate admin://%f

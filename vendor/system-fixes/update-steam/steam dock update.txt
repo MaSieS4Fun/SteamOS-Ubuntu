@@ -1,0 +1,1 @@
+sudo mv /usr/bin/steamos-polkit-helpers/jupiter-dock-updater /usr/bin/steamos-polkit-helpers/jupiter-dock-updater.disabled

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Switch to Plasma Mobile
+Name[es]=Cambiar a Plasma Mobile
+Comment=Leave Plasma Desktop and start the mobile shell (touch-first)
+Comment[es]=Salir de Plasma Desktop e iniciar el entorno móvil
+Exec=steamos-plasma-to-mobile
+Icon=phone
+Terminal=false
+Categories=System;Settings;
+StartupNotify=true

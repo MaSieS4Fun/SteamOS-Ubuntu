@@ -1,0 +1,22 @@
+[Unit]
+Description=Expand root partition/filesystem to fill SD card (no reboot)
+Documentation=file:///usr/libexec/steamos-ubuntu/expand-rootfs
+DefaultDependencies=no
+Conflicts=shutdown.target
+# Root must be RW; finish before anything that starts Steam / greetd.
+After=systemd-remount-fs.service
+Before=local-fs.target
+Before=greetd.service display-manager.service steamos-force-gaming-boot.service
+ConditionPathExists=!/var/lib/steamos-ubuntu/rootfs-expanded
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/steamos-ubuntu/expand-rootfs
+TimeoutStartSec=180
+# Never block boot forever if tools are missing — script exits 0 on soft skip.
+SuccessExitStatus=0
+
+[Install]
+WantedBy=local-fs.target
+WantedBy=sysinit.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=Qualcomm SSC motion bridge (uinput IMU for InputPlumber deck-uhid)
+Documentation=file:/usr/share/doc/masi-motion/README.txt
+After=masi-qcom-sensors.service sound.target
+Requires=masi-qcom-sensors.service
+ConditionPathExists=/proc/device-tree/compatible
+ConditionPathExists=/usr/bin/qcom-motion
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/qcom-motion-start
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=graphical.target

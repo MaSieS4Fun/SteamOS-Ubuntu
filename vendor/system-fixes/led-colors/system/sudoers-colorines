@@ -1,0 +1,2 @@
+# Allow Plasma (video group) to drive gamepad LEDs without a password prompt.
+%video ALL=(root) NOPASSWD: /usr/libexec/masi/colorines-ctl *

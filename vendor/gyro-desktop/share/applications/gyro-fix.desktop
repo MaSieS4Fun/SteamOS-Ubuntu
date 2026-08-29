@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=GYRO-FIX
+GenericName=Desktop gyro / DSU
+Comment=Optional DSU for emulators + motion sensitivity (desktop)
+Exec=gyro-fix
+Icon=gyro-fix
+Terminal=false
+Categories=Utility;Settings;Game;
+Keywords=gyro;dsu;cemuhook;emulator;odin;
+StartupNotify=true

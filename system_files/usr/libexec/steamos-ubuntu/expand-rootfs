@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Grow GPT root partition (STORAGE) + ext4 to fill the SD/eMMC after flash.
+#
+# Same idea as Ubuntu cloud (growpart), Rocknix:
+#   growpart (partition table) + resize2fs (filesystem) while root is mounted.
+# No reboot. Safe to run every boot until the marker is written.
+#
+# Must finish before greetd / Steam (see steamos-expand-rootfs.service).
+set -u
+
+MARKER="/var/lib/steamos-ubuntu/rootfs-expanded"
+LOG="/var/log/steamos-expand-rootfs.log"
+mkdir -p /var/lib/steamos-ubuntu /var/log
+exec >>"${LOG}" 2>&1
+
+ts() { date -Iseconds; }
+log() { printf '%s %s\n' "$(ts)" "$*"; }
+
+log "=== expand-rootfs start ==="
+
+if [[ -f "${MARKER}" ]]; then
+  log "marker ${MARKER} present — skip"
+  exit 0
+fi
+
+if ! command -v growpart >/dev/null 2>&1; then
+  log "ERROR: growpart missing (apt: cloud-guest-utils) — skip (boot continues)"
+  exit 0
+fi
+if ! command -v resize2fs >/dev/null 2>&1; then
+  log "ERROR: resize2fs missing (apt: e2fsprogs) — skip"
+  exit 0
+fi
+
+ROOT_SRC="$(findmnt -n -o SOURCE / 2>/dev/null || true)"
+if [[ -z "${ROOT_SRC}" ]]; then
+  log "ERROR: cannot resolve root mount SOURCE — skip"
+  exit 0
+fi
+
+# Resolve symlinks (e.g. /dev/root → real node)
+if [[ -e "${ROOT_SRC}" ]]; then
+  ROOT_SRC="$(readlink -f "${ROOT_SRC}")"
+fi
+log "root SOURCE=${ROOT_SRC}"
+
+# Only plain block partitions (mmcblk*pN, nvme*pN, sdXN). Skip LVM/mapper/loop.
+case "${ROOT_SRC}" in
+  /dev/mapper/*|/dev/dm-*|/dev/loop*)
+    log "root is mapper/loop — skip auto-expand"
+    touch "${MARKER}"
+    exit 0
+    ;;
+esac
+
+FSTYPE="$(findmnt -n -o FSTYPE / 2>/dev/null || true)"
+if [[ "${FSTYPE}" != "ext4" && "${FSTYPE}" != "ext3" && "${FSTYPE}" != "ext2" ]]; then
+  log "root fstype=${FSTYPE:-unknown} — only ext* supported, skip"
+  touch "${MARKER}"
+  exit 0
+fi
+
+PART_BASE="$(basename "${ROOT_SRC}")"
+PART_SYS="/sys/class/block/${PART_BASE}/partition"
+if [[ ! -f "${PART_SYS}" ]]; then
+  log "ERROR: ${ROOT_SRC} is not a partition node — skip"
+  exit 0
+fi
+PART_NUM="$(cat "${PART_SYS}")"
+
+DISK_NAME="$(lsblk -no PKNAME "${ROOT_SRC}" 2>/dev/null | head -1 || true)"
+if [[ -z "${DISK_NAME}" ]]; then
+  # Fallback: strip trailing pN / digit
+  DISK_NAME="${PART_BASE%p"${PART_NUM}"}"
+  DISK_NAME="${DISK_NAME%"${PART_NUM}"}"
+fi
+DISK="/dev/${DISK_NAME}"
+if [[ ! -b "${DISK}" ]]; then
+  log "ERROR: parent disk ${DISK} not a block device — skip"
+  exit 0
+fi
+
+log "growpart ${DISK} ${PART_NUM}"
+set +e
+GROW_OUT="$(growpart "${DISK}" "${PART_NUM}" 2>&1)"
+GROW_RC=$?
+set -e
+printf '%s\n' "${GROW_OUT}"
+
+# growpart: 0 = grew; 1 = often NOCHANGE (already at max) — both OK
+if [[ "${GROW_RC}" -eq 0 ]]; then
+  log "partition grew"
+elif [[ "${GROW_RC}" -eq 1 ]] || printf '%s\n' "${GROW_OUT}" | grep -qi 'NOCHANGE'; then
+  log "partition already at max (or NOCHANGE)"
+else
+  log "WARN: growpart rc=${GROW_RC} — still attempting resize2fs"
+fi
+
+# Kernel may need a moment to see new partition end
+udevadm settle 2>/dev/null || true
+partx -u "${DISK}" 2>/dev/null || true
+sleep 0.2
+
+log "resize2fs ${ROOT_SRC}"
+set +e
+RESIZE_OUT="$(resize2fs "${ROOT_SRC}" 2>&1)"
+RESIZE_RC=$?
+set -e
+printf '%s\n' "${RESIZE_OUT}"
+if [[ "${RESIZE_RC}" -ne 0 ]]; then
+  log "WARN: resize2fs rc=${RESIZE_RC}"
+  # Do not write marker on hard failure — retry next boot
+  if ! printf '%s\n' "${RESIZE_OUT}" | grep -qiE 'Nothing to do|already|is already'; then
+    log "=== expand-rootfs incomplete (will retry) ==="
+    exit 0
+  fi
+fi
+
+touch "${MARKER}"
+log "wrote ${MARKER}"
+log "=== expand-rootfs done (no reboot) ==="
+exit 0

@@ -1,0 +1,30 @@
+Shared includes referenced by AYN/Odin2 UCM (normally from distro alsa-ucm-conf):
+
+  /usr/share/alsa/ucm2/lib/card-init.conf
+  /usr/share/alsa/ucm2/lib/ctl-remap.conf
+  /usr/share/alsa/ucm2/codecs/wcd938x/*
+  /usr/share/alsa/ucm2/codecs/qcom-lpass/rx-macro/*
+  /usr/share/alsa/ucm2/codecs/qcom-lpass/tx-macro/*
+
+If the image's alsa-ucm-conf is too old, copy from vendor/audio/ucm2-shared-reference/.
+
+Reference file names observed on a working SM8550 desktop stack:
+
+card-init.conf
+ctl-remap.conf
+
+wcd938x/:
+  AnalogMic1DisableSeq.conf AnalogMic1EnableSeq.conf
+  AnalogMic5DisableSeq.conf AnalogMic5EnableSeq.conf
+  HeadphoneABEnableSeq.conf HeadphoneDisableSeq.conf HeadphoneEnableSeq.conf
+  HeadphoneMicDisableSeq.conf HeadphoneMicEnableSeq.conf init.conf
+
+qcom-lpass/rx-macro/:
+  HeadphoneDisableSeq.conf HeadphoneEnableSeq.conf
+  HeadphoneLDisableSeq.conf HeadphoneLEnableSeq.conf init.conf
+
+qcom-lpass/tx-macro/:
+  DMIC0DisableSeq.conf DMIC0EnableSeq.conf
+  HeadphoneMicDisableSeq.conf HeadphoneMicEnableSeq.conf
+  SoundwireMic0EnableSeq.conf SoundwireMic1EnableSeq.conf
+  SoundwireMicDisableSeq.conf

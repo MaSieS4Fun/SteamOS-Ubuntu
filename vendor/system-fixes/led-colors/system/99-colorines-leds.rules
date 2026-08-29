@@ -1,0 +1,3 @@
+# Allow desktop/user sessions to control AYN RGB LEDs without root.
+# Decky still uses root flag; this covers Plasma applet + quick setting.
+SUBSYSTEM=="leds", KERNEL=="left-joystick|left-side|right-joystick|right-side|left_joystick|left_side|right_joystick|right_side|power-led", MODE="0664", GROUP="video"

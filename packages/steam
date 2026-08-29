@@ -1,0 +1,77 @@
+# Steam ARM64 client helpers / runtime deps
+curl
+wget
+unzip
+binutils
+ca-certificates
+xdg-utils
+desktop-file-utils
+libnss3
+libnspr4
+libatk1.0-0t64
+libatk-bridge2.0-0t64
+libcups2t64
+libdrm2
+libgbm1
+libgtk-3-0t64
+libpango-1.0-0
+libxcomposite1
+libxdamage1
+libxrandr2
+libxshmfence1
+libxss1
+libxtst6
+libxi6
+libsm6
+libice6
+libdbus-1-3
+libcap2
+libcap2-bin
+libudev1
+libusb-1.0-0
+libva2
+libvdpau1
+libvulkan1
+# Vulkan ICD = vendor Turnip (build-vendor-mesa.sh). Never mesa-vulkan-drivers.
+# Steam ARM steamui.so (GTK2)
+libgtk2.0-0t64
+libgtk2.0-bin
+fonts-liberation
+zenity
+bubblewrap
+libfuse2t64
+libc6
+libstdc++6
+libgcc-s1
+libcurl4t64
+libssl3t64
+libsqlite3-0
+libpng16-16t64
+libjpeg62-turbo
+zlib1g
+libxcb1
+libx11-6
+libxext6
+libxfixes3
+libxrender1
+libxkbcommon0
+libwayland-client0
+libwayland-cursor0
+libwayland-egl1
+gamemode
+# mangohud from vendor/MangoHud
+python3
+xz-utils
+file
+pkexec
+policykit-1
+libayatana-appindicator3-1
+libnotify4
+dunst
+xvfb
+xauth
+# Steam shells out to xwininfo/xprop under gamescope; without these it hits
+# "xwininfo: not found" then fatal stalled cross-thread pipe → session → TTY.
+x11-utils
+x11-xserver-utils
+libopenal1

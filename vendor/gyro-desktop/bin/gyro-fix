@@ -1,0 +1,551 @@
+#!/usr/bin/env python3
+"""GYRO-FIX — optional DSU + motion sensitivity for desktop emulators.
+
+UI: Gtk3. CLI fallback if GI missing.
+
+SPDX-License-Identifier: GPL-3.0-or-later
+"""
+
+from __future__ import annotations
+
+import configparser
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+STATE_DIR = Path(os.environ.get("GYRO_DESKTOP_STATE", "/var/lib/masi/gyro-desktop"))
+STATE_FILE = STATE_DIR / "state.ini"
+USER_PROFILE_DIR = Path.home() / ".config" / "gyro-desktop" / "profiles"
+SYS_PROFILE_DIR = STATE_DIR / "profiles"
+SHARE_PROFILE_DIR = Path("/usr/share/gyro-desktop/profiles")
+BUNDLED_PROFILES = Path(__file__).resolve().parent.parent / "profiles"
+PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def which_helper(name: str) -> str:
+    found = shutil.which(name)
+    if found:
+        return found
+    local = Path(__file__).resolve().parent / name
+    if local.exists():
+        return str(local)
+    return name
+
+
+DSU_BIN = which_helper("gyro-fix-dsu")
+APPLY_BIN = which_helper("gyro-fix-apply")
+
+
+def run(cmd: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, check=False, text=True, capture_output=True)
+
+
+def sudo_run(cmd: list[str]) -> subprocess.CompletedProcess:
+    if os.geteuid() == 0:
+        return run(cmd)
+    return run(["sudo", "-n", *cmd])
+
+
+def calib_path() -> Path:
+    p = run([DSU_BIN, "calib-path"])
+    return Path(
+        (p.stdout or "").strip()
+        or "/var/lib/masi/qcom-sensors/odin2/motion-calibration.ini"
+    )
+
+
+def _bool(u: dict, *keys: str, default: bool = False) -> bool:
+    for k in keys:
+        if k in u:
+            return str(u.get(k, "")).lower() in ("1", "true", "yes")
+    return default
+
+
+def settings_from_user_dict(u: dict) -> dict:
+    legacy_h = _bool(u, "invert_horizontal")
+    legacy_v = _bool(u, "invert_vertical")
+    return {
+        "gyro_sensitivity": float(u.get("gyro_sensitivity", "1.0")),
+        "accel_sensitivity": float(u.get("accel_sensitivity", "1.0")),
+        "invert_gyro_horizontal": _bool(
+            u, "invert_gyro_horizontal", default=legacy_h
+        ),
+        "invert_gyro_vertical": _bool(u, "invert_gyro_vertical", default=legacy_v),
+        "invert_accel_horizontal": _bool(
+            u, "invert_accel_horizontal", default=legacy_h
+        ),
+        "invert_accel_vertical": _bool(
+            u, "invert_accel_vertical", default=legacy_v
+        ),
+    }
+
+
+def read_user_settings() -> dict:
+    path = calib_path()
+    cp = configparser.ConfigParser()
+    if path.is_file():
+        cp.read(path)
+    u = dict(cp["user"]) if "user" in cp else {}
+    return settings_from_user_dict(u)
+
+
+def dsu_status() -> dict:
+    p = run([DSU_BIN, "status"])
+    out: dict[str, str] = {}
+    for part in (p.stdout or "").strip().split():
+        if "=" in part:
+            k, v = part.split("=", 1)
+            out[k] = v
+    return out
+
+
+def ensure_profiles() -> None:
+    USER_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    for src in (BUNDLED_PROFILES, SHARE_PROFILE_DIR, SYS_PROFILE_DIR):
+        if not src.is_dir():
+            continue
+        for f in src.glob("*.ini"):
+            dest = USER_PROFILE_DIR / f.name
+            if not dest.exists():
+                try:
+                    shutil.copy2(f, dest)
+                except OSError:
+                    pass
+
+
+def find_profile_path(name: str) -> Path | None:
+    for base in (USER_PROFILE_DIR, SYS_PROFILE_DIR, SHARE_PROFILE_DIR, BUNDLED_PROFILES):
+        path = base / f"{name}.ini"
+        if path.is_file():
+            return path
+    return None
+
+
+def list_profiles() -> list[str]:
+    ensure_profiles()
+    names: set[str] = set()
+    for base in (USER_PROFILE_DIR, SYS_PROFILE_DIR, SHARE_PROFILE_DIR, BUNDLED_PROFILES):
+        if not base.is_dir():
+            continue
+        for f in base.glob("*.ini"):
+            names.add(f.stem)
+    return sorted(names) or ["default"]
+
+
+def load_profile(name: str) -> dict:
+    path = find_profile_path(name)
+    cp = configparser.ConfigParser()
+    if path:
+        cp.read(path)
+    u = dict(cp["user"]) if "user" in cp else {}
+    return settings_from_user_dict(u)
+
+
+def save_profile(name: str, settings: dict) -> None:
+    if not PROFILE_NAME_RE.match(name):
+        raise ValueError("invalid profile name")
+    ensure_profiles()
+    path = USER_PROFILE_DIR / f"{name}.ini"
+    cp = configparser.ConfigParser()
+    cp["user"] = {
+        "gyro_sensitivity": str(settings["gyro_sensitivity"]),
+        "accel_sensitivity": str(settings["accel_sensitivity"]),
+        "invert_gyro_horizontal": (
+            "true" if settings["invert_gyro_horizontal"] else "false"
+        ),
+        "invert_gyro_vertical": (
+            "true" if settings["invert_gyro_vertical"] else "false"
+        ),
+        "invert_accel_horizontal": (
+            "true" if settings["invert_accel_horizontal"] else "false"
+        ),
+        "invert_accel_vertical": (
+            "true" if settings["invert_accel_vertical"] else "false"
+        ),
+    }
+    with path.open("w", encoding="utf-8") as f:
+        cp.write(f)
+
+
+def create_profile(name: str, settings: dict | None = None) -> None:
+    name = name.strip()
+    if not PROFILE_NAME_RE.match(name):
+        raise ValueError("use letters, numbers, _ or - only")
+    if find_profile_path(name) and (USER_PROFILE_DIR / f"{name}.ini").exists():
+        raise ValueError(f"profile already exists: {name}")
+    save_profile(name, settings or read_user_settings())
+
+
+def apply_settings(settings: dict, profile: str) -> str:
+    env = os.environ.copy()
+    env["GYRO_SENS"] = f"{settings['gyro_sensitivity']:.3f}"
+    env["ACCEL_SENS"] = f"{settings['accel_sensitivity']:.3f}"
+    env["INVERT_GYRO_H"] = "1" if settings["invert_gyro_horizontal"] else "0"
+    env["INVERT_GYRO_V"] = "1" if settings["invert_gyro_vertical"] else "0"
+    env["INVERT_ACCEL_H"] = "1" if settings["invert_accel_horizontal"] else "0"
+    env["INVERT_ACCEL_V"] = "1" if settings["invert_accel_vertical"] else "0"
+    env["PROFILE"] = profile
+    cmd = ["sudo", "-n", APPLY_BIN] if os.geteuid() != 0 else [APPLY_BIN]
+    p = subprocess.run(cmd, env=env, text=True, capture_output=True)
+    if p.returncode != 0:
+        return (p.stderr or p.stdout or "apply failed").strip()
+    # Also mark as active profile for always-on / next DSU start
+    set_p = sudo_run([DSU_BIN, "set-profile", profile])
+    extra = (set_p.stdout or set_p.stderr or "").strip()
+    base = (p.stdout or "ok").strip()
+    return f"{base}\n{extra}".strip() if extra else base
+
+
+def set_active_profile(name: str) -> str:
+    p = sudo_run([DSU_BIN, "set-profile", name])
+    if p.returncode != 0:
+        return (p.stderr or p.stdout or "set-profile failed").strip()
+    return (p.stdout or "ok").strip()
+
+
+def set_dsu(on: bool) -> str:
+    p = sudo_run([DSU_BIN, "on" if on else "off"])
+    if p.returncode != 0:
+        return (p.stderr or p.stdout or "dsu failed").strip()
+    return (p.stdout or "ok").strip()
+
+
+def set_always_on(on: bool) -> str:
+    p = sudo_run([DSU_BIN, "always-on" if on else "always-off"])
+    if p.returncode != 0:
+        return (p.stderr or p.stdout or "always-on failed").strip()
+    return (p.stdout or "ok").strip()
+
+
+def try_gtk3() -> bool:
+    try:
+        import gi
+
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import Gtk  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+def run_gtk3() -> int:
+    import gi
+
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import Gtk, GLib
+
+    ensure_profiles()
+    settings = read_user_settings()
+
+    win = Gtk.Window(title="GYRO-FIX")
+    win.set_default_size(520, 680)
+    win.set_border_width(14)
+    win.connect("destroy", Gtk.main_quit)
+
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+    win.add(outer)
+
+    warn = Gtk.Label(
+        label="This configuration only affects emulators and apps in the desktop "
+        "environment. It has no effect in Steam Gaming Mode (full session or nested).",
+        xalign=0,
+    )
+    warn.set_line_wrap(True)
+    warn.set_max_width_chars(56)
+    try:
+        warn.get_style_context().add_class("warning")
+    except Exception:
+        pass
+    outer.pack_start(warn, False, False, 0)
+    outer.pack_start(Gtk.Separator(), False, False, 2)
+
+    status = Gtk.Label(xalign=0)
+    outer.pack_start(status, False, False, 0)
+
+    def refresh_status(*_a):
+        st = dsu_status()
+        status.set_text(
+            f"DSU wanted={st.get('wanted', '?')}  always_on={st.get('always_on', '?')}  "
+            f"active={st.get('active', '?')}  :26760={st.get('port_26760', '?')}\n"
+            f"Active profile: {st.get('profile', '?')}  "
+            "(used when DSU starts / always-on / reboot)"
+        )
+        return False
+
+    msg = Gtk.Label(xalign=0)
+    msg.set_line_wrap(True)
+
+    st0 = dsu_status()
+    dsu_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+    dsu_btn = Gtk.CheckButton(label="DSU enabled (emulators · 127.0.0.1:26760)")
+    dsu_btn.set_active(st0.get("wanted") == "true" or st0.get("active") == "true")
+    always_btn = Gtk.CheckButton(label="Keep always on (survive reboot)")
+    always_btn.set_active(st0.get("always_on") == "true")
+    _syncing = {"v": False}
+
+    def on_dsu(btn):
+        if _syncing["v"]:
+            return
+        msg.set_text(set_dsu(btn.get_active()))
+        GLib.timeout_add(400, refresh_status)
+
+    def on_always(btn):
+        if _syncing["v"]:
+            return
+        on = btn.get_active()
+        msg.set_text(set_always_on(on))
+        if on:
+            _syncing["v"] = True
+            dsu_btn.set_active(True)
+            _syncing["v"] = False
+        GLib.timeout_add(400, refresh_status)
+
+    dsu_btn.connect("toggled", on_dsu)
+    always_btn.connect("toggled", on_always)
+    dsu_row.pack_start(dsu_btn, True, True, 0)
+    dsu_row.pack_start(always_btn, False, False, 0)
+    outer.pack_start(dsu_row, False, False, 0)
+
+    hint = Gtk.Label(
+        label="Off by default. Safe with Gaming Mode (same qcom-motion serves DSU + Steam IMU).\n"
+        "Always-on uses the Active profile below after reboot.",
+        xalign=0,
+    )
+    hint.set_line_wrap(True)
+    outer.pack_start(hint, False, False, 0)
+    outer.pack_start(Gtk.Separator(), False, False, 4)
+
+    def make_sens_row(label: str, value: float):
+        outer.pack_start(Gtk.Label(label=label, xalign=0), False, False, 0)
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.1, 5.0, 0.05)
+        scale.set_value(value)
+        scale.set_draw_value(False)
+        scale.set_hexpand(True)
+        adj = Gtk.Adjustment(
+            value=value, lower=0.1, upper=5.0, step_increment=0.01, page_increment=0.1
+        )
+        spin = Gtk.SpinButton(adjustment=adj, climb_rate=0.01, digits=2)
+        spin.set_width_chars(5)
+        sync = {"busy": False}
+
+        def from_scale(_s):
+            if sync["busy"]:
+                return
+            sync["busy"] = True
+            spin.set_value(scale.get_value())
+            sync["busy"] = False
+
+        def from_spin(_s):
+            if sync["busy"]:
+                return
+            sync["busy"] = True
+            scale.set_value(spin.get_value())
+            sync["busy"] = False
+
+        scale.connect("value-changed", from_scale)
+        spin.connect("value-changed", from_spin)
+        row.pack_start(scale, True, True, 0)
+        row.pack_start(spin, False, False, 0)
+        outer.pack_start(row, False, False, 0)
+        return spin
+
+    gyro_spin = make_sens_row("Gyroscope sensitivity", settings["gyro_sensitivity"])
+    accel_spin = make_sens_row(
+        "Accelerometer sensitivity", settings["accel_sensitivity"]
+    )
+
+    outer.pack_start(Gtk.Separator(), False, False, 4)
+    outer.pack_start(Gtk.Label(label="Invert axes (independent)", xalign=0), False, False, 0)
+    inv_gh = Gtk.CheckButton(label="Invert gyro horizontal")
+    inv_gh.set_active(settings["invert_gyro_horizontal"])
+    inv_gv = Gtk.CheckButton(label="Invert gyro vertical")
+    inv_gv.set_active(settings["invert_gyro_vertical"])
+    inv_ah = Gtk.CheckButton(label="Invert accel horizontal")
+    inv_ah.set_active(settings["invert_accel_horizontal"])
+    inv_av = Gtk.CheckButton(label="Invert accel vertical")
+    inv_av.set_active(settings["invert_accel_vertical"])
+    for w in (inv_gh, inv_gv, inv_ah, inv_av):
+        outer.pack_start(w, False, False, 0)
+
+    outer.pack_start(Gtk.Separator(), False, False, 4)
+    outer.pack_start(Gtk.Label(label="Profile", xalign=0), False, False, 0)
+
+    profile = Gtk.ComboBoxText()
+
+    def refill_profiles(select: str | None = None):
+        names = list_profiles()
+        profile.remove_all()
+        for name in names:
+            profile.append_text(name)
+        target = select or dsu_status().get("profile") or "default"
+        if target in names:
+            profile.set_active(names.index(target))
+        elif names:
+            profile.set_active(0)
+
+    refill_profiles()
+    outer.pack_start(profile, False, False, 0)
+
+    new_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    new_entry = Gtk.Entry()
+    new_entry.set_placeholder_text("new-profile-name")
+    new_btn = Gtk.Button(label="Create")
+    new_row.pack_start(new_entry, True, True, 0)
+    new_row.pack_start(new_btn, False, False, 0)
+    outer.pack_start(new_row, False, False, 0)
+
+    def cur() -> dict:
+        return {
+            "gyro_sensitivity": float(gyro_spin.get_value()),
+            "accel_sensitivity": float(accel_spin.get_value()),
+            "invert_gyro_horizontal": inv_gh.get_active(),
+            "invert_gyro_vertical": inv_gv.get_active(),
+            "invert_accel_horizontal": inv_ah.get_active(),
+            "invert_accel_vertical": inv_av.get_active(),
+        }
+
+    def pname() -> str:
+        return profile.get_active_text() or "default"
+
+    def apply_to_ui(s: dict):
+        gyro_spin.set_value(s["gyro_sensitivity"])
+        accel_spin.set_value(s["accel_sensitivity"])
+        inv_gh.set_active(s["invert_gyro_horizontal"])
+        inv_gv.set_active(s["invert_gyro_vertical"])
+        inv_ah.set_active(s["invert_accel_horizontal"])
+        inv_av.set_active(s["invert_accel_vertical"])
+
+    def on_create(_b):
+        name = new_entry.get_text().strip()
+        try:
+            create_profile(name, cur())
+        except ValueError as e:
+            msg.set_text(str(e))
+            return
+        refill_profiles(select=name)
+        new_entry.set_text("")
+        msg.set_text(f"Profile created: {name}")
+
+    new_btn.connect("clicked", on_create)
+
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
+    def on_apply(_b):
+        # Save into profile file + write calibration + mark active
+        try:
+            save_profile(pname(), cur())
+        except ValueError as e:
+            msg.set_text(str(e))
+            return
+        msg.set_text(apply_settings(cur(), pname()))
+        refresh_status()
+
+    def on_save(_b):
+        try:
+            save_profile(pname(), cur())
+            msg.set_text(f"Profile saved: {pname()}")
+        except ValueError as e:
+            msg.set_text(str(e))
+
+    def on_load(_b):
+        apply_to_ui(load_profile(pname()))
+        msg.set_text(f"Profile loaded into UI: {pname()}")
+
+    def on_set_active(_b):
+        try:
+            save_profile(pname(), cur())
+        except ValueError:
+            pass
+        # Apply settings to live calibration and set active for always-on
+        msg.set_text(apply_settings(cur(), pname()))
+        refresh_status()
+
+    for label, cb in (
+        ("Apply + set active", on_set_active),
+        ("Save", on_save),
+        ("Load", on_load),
+    ):
+        b = Gtk.Button(label=label)
+        b.connect("clicked", cb)
+        row.pack_start(b, True, True, 0)
+    outer.pack_start(row, False, False, 8)
+
+    note = Gtk.Label(
+        label="'Apply + set active' writes settings and selects this profile for "
+        "DSU / always-on / reboot.",
+        xalign=0,
+    )
+    note.set_line_wrap(True)
+    outer.pack_start(note, False, False, 0)
+    outer.pack_start(msg, False, False, 0)
+
+    refresh_status()
+    win.show_all()
+    Gtk.main()
+    return 0
+
+
+def run_cli() -> int:
+    ensure_profiles()
+    print("GYRO-FIX CLI")
+    print(
+        "1) DSU on  2) DSU off  3) Always on  4) Always off\n"
+        "5) Apply+active profile  6) Create profile  7) Status  0) Quit"
+    )
+    while True:
+        st = dsu_status()
+        print(
+            f"\nwanted={st.get('wanted')} always_on={st.get('always_on')} "
+            f"active={st.get('active')} profile={st.get('profile')} "
+            f":26760={st.get('port_26760')}"
+        )
+        choice = input("> ").strip()
+        if choice == "0":
+            return 0
+        if choice == "1":
+            print(set_dsu(True))
+        elif choice == "2":
+            print(set_dsu(False))
+        elif choice == "3":
+            print(set_always_on(True))
+        elif choice == "4":
+            print(set_always_on(False))
+        elif choice == "5":
+            name = input(f"profile [{st.get('profile', 'default')}]: ").strip() or st.get(
+                "profile", "default"
+            )
+            print(apply_settings(load_profile(name), name))
+        elif choice == "6":
+            name = input("new profile name: ").strip()
+            try:
+                create_profile(name)
+                print(f"created {name}")
+            except ValueError as e:
+                print(e)
+        elif choice == "7":
+            pass
+        else:
+            print("unknown option")
+    return 0
+
+
+def main() -> int:
+    if try_gtk3():
+        return run_gtk3()
+    print(
+        "WARNING: Gtk3 unavailable. Install: sudo apt install python3-gi gir1.2-gtk-3.0",
+        file=sys.stderr,
+    )
+    if sys.stdin.isatty():
+        return run_cli()
+    print("No TTY — cannot open UI.", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

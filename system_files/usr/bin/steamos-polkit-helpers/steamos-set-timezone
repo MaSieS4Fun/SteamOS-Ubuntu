@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Steam OOBE timezone picker — greetd has no polkit agent.
+# Do NOT probe with `sudo -n true`: steam only has NOPASSWD for specific
+# commands, so that probe always fails and we fall through to pkexec (broken).
+set -euo pipefail
+if [[ "${EUID}" -ne 0 ]]; then
+  exec sudo -n -- "$0" "$@"
+fi
+exec /usr/bin/timedatectl set-timezone "$1"

@@ -1,0 +1,27 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "masi@local",
+                "Name": "MaSi-OS"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Gamepad RGB LEDs — on/off and colors",
+        "FormFactors": [
+            "desktop",
+            "tablet"
+        ],
+        "Icon": "color-management",
+        "Id": "org.masi.colorines",
+        "License": "GPL-2.0-or-later",
+        "Name": "Led Colors",
+        "Version": "0.1",
+        "Website": ""
+    },
+    "Keywords": "LED;RGB;Color;Gamepad;Odin;MaSi;",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml",
+    "X-Plasma-NotificationAreaCategory": "SystemServices"
+}

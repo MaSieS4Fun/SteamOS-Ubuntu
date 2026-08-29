@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Ensure polkit-kde agent is alive after Plasma Wayland is up (Kate root save).
+set +e
+AGENT=/usr/lib/aarch64-linux-gnu/libexec/polkit-kde-authentication-agent-1
+LOG="${XDG_RUNTIME_DIR:-/tmp}/steamos-polkit-agent.log"
+exec >>"$LOG" 2>&1
+echo "===== $(date -Iseconds) ensure-plasma-polkit-agent uid=$(id -u) ====="
+
+[[ -x "$AGENT" ]] || { echo "agent binary missing"; exit 0; }
+
+# Wait for compositor (greetd must not start the agent before this).
+for i in $(seq 1 80); do
+  if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]]; then
+    echo "wayland ok: ${WAYLAND_DISPLAY} (try $i)"
+    break
+  fi
+  if compgen -G "${XDG_RUNTIME_DIR}/wayland-*" >/dev/null 2>&1; then
+    echo "wayland socket present (try $i): $(echo "${XDG_RUNTIME_DIR}"/wayland-*)"
+    break
+  fi
+  sleep 0.25
+done
+
+if pgrep -u "$(id -u)" -f 'polkit-kde-authentication-agent' >/dev/null 2>&1; then
+  echo "agent already running"
+  exit 0
+fi
+
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl --user reset-failed plasma-polkit-agent.service 2>/dev/null
+  if systemctl --user start plasma-polkit-agent.service 2>/dev/null; then
+    sleep 0.5
+    if pgrep -u "$(id -u)" -f 'polkit-kde-authentication-agent' >/dev/null 2>&1; then
+      echo "started via systemd --user"
+      exit 0
+    fi
+    echo "systemd start reported ok but process missing — falling back"
+  else
+    echo "systemd --user start failed — falling back to direct exec"
+  fi
+fi
+
+echo "exec $AGENT"
+exec "$AGENT"

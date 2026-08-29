@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GYRO-FIX desktop pad
+Comment=Ensure Xbox-style pad on Plasma; DSU only if previously enabled
+Exec=sudo -n /usr/bin/gyro-desktop-plasma
+Icon=gyro-fix
+X-GNOME-Autostart-enabled=true
+OnlyShowIn=KDE;GNOME;XFCE;LXQt;
+Hidden=false
+NoDisplay=true

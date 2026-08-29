@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Launch native ARM Steam — Wayland DisplayManager env + Deck Gamepad UI.
+# Usage: launch-steam [extra steam args...]
+set -euo pipefail
+
+steam_root="${STEAM_ROOT:-${HOME}/.local/share/Steam}"
+steam_arm_dir="${steam_root}/steamrtarm64"
+steam_arm="${steam_arm_dir}/steam"
+steam_shim_dir="${steam_root}/lib/aarch64-linux-gnu"
+steam_runtime_bin="${steam_root}/steam-runtime-steamrt-arm64/bin"
+
+if [[ ! -x "${steam_arm}" ]]; then
+  echo "ERROR: ARM Steam missing: ${steam_arm}" >&2
+  exit 127
+fi
+
+steam_ld_path="${steam_arm_dir}"
+if [[ -d "${steam_shim_dir}" ]]; then
+  steam_ld_path="${steam_ld_path}:${steam_shim_dir}"
+fi
+export LD_LIBRARY_PATH="${steam_ld_path}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+if [[ -d "${steam_runtime_bin}" ]]; then
+  export PATH="${steam_runtime_bin}:${PATH}"
+fi
+
+export SteamDeck="${SteamDeck:-1}"
+export SDL_GAMECONTROLLERCONFIG_FILE="${SDL_GAMECONTROLLERCONFIG_FILE:-/etc/sdl2/qcom-gamecontrollerdb.txt}"
+export SDL_VIDEO_X11_DGAMOUSE=0
+
+# Deck DisplayManager needs GAMESCOPE_WAYLAND_DISPLAY in this process and children.
+export _STEAM_SETENV_MANAGER=1
+if [[ -z "${GAMESCOPE_WAYLAND_DISPLAY:-}" ]]; then
+  if [[ -S "${XDG_RUNTIME_DIR}/gamescope-0" ]]; then
+    export GAMESCOPE_WAYLAND_DISPLAY=gamescope-0
+  elif [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+    for sock in "${XDG_RUNTIME_DIR}"/gamescope-*; do
+      [[ -S "$sock" ]] || continue
+      export GAMESCOPE_WAYLAND_DISPLAY="$(basename "$sock")"
+      break
+    done
+  fi
+fi
+# CEF/Qt must not see a normal Wayland session display.
+unset WAYLAND_DISPLAY XDG_SESSION_TYPE || true
+
+echo "launch-steam: GAMESCOPE_WAYLAND_DISPLAY=${GAMESCOPE_WAYLAND_DISPLAY:-UNSET} DISPLAY=${DISPLAY:-UNSET}"
+
+# Fixed mango paths (session should already export these)
+USER_MANGO="${HOME}/.config/MangoHud/steam"
+export MANGOHUD_CONFIGFILE="${MANGOHUD_CONFIGFILE:-${USER_MANGO}/MangoHud.conf}"
+export MANGOHUD_PRESETSFILE="${MANGOHUD_PRESETSFILE:-${USER_MANGO}/presets.conf}"
+export MANGOHUD_CONFIG="${MANGOHUD_CONFIG:-read_cfg}"
+
+# Keep Deck channel pinned (bake)
+if [[ -d "${steam_root}/package" ]]; then
+  echo "${STEAM_ARM_CHANNEL:-steamdeck_publicbeta}" > "${steam_root}/package/beta" 2>/dev/null || true
+fi
+
+# ARM client CDN self-update after Wi-Fi fails (http error 0) and sits on Retry
+# forever — Steam never exits, so gamescope-session cannot cycle. Inhibit the
+# bootstrapper in $HOME (never /usr). OOBE language/Wi-Fi still run.
+write_arm_bootstrap_inhibit() {
+  local cfg dest
+  cfg=$'# Steam ARM: skip broken client CDN self-update (Retry loop).\nBootStrapperInhibitAll=enable\nBootStrapperForceSelfUpdate=disable\n'
+  for dest in "${steam_root}/steam.cfg" "${steam_arm_dir}/steam.cfg"; do
+    mkdir -p "$(dirname "$dest")" 2>/dev/null || true
+    printf '%s' "$cfg" >"$dest" 2>/dev/null || true
+  done
+}
+write_arm_bootstrap_inhibit
+
+# Neutralize SteamUI "Updater check error: 40" caused by BootStrapperInhibitAll
+# marking the Client check as Blocked while still reporting no updates.
+for _patch in \
+  /usr/libexec/steamos-ubuntu/patch-steamui-update-check \
+  "${HOME}/.local/share/steamos-ubuntu/patch-steamui-update-check"
+do
+  if [[ -x "$_patch" ]]; then
+    "$_patch" || true
+    break
+  fi
+done
+unset _patch
+
+rm -f \
+  "${HOME}/.steam/steam.pid" \
+  "${HOME}/.steam/steam.token" \
+  "${HOME}/.steampid" \
+  "${steam_root}/steam.pid" \
+  "${steam_root}/.steam.pid" \
+  2>/dev/null || true
+
+wait_steamos_manager() {
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    if dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply \
+        /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
+        string:com.steampowered.SteamOSManager1 2>/dev/null | grep -q 'boolean true'; then
+      return 0
+    fi
+    sleep 0.05
+  done
+  return 1
+}
+
+if command -v dbus-send >/dev/null 2>&1; then
+  if ! wait_steamos_manager; then
+    if [[ -x /usr/libexec/steamos-ubuntu/steamos-manager ]]; then
+      /usr/libexec/steamos-ubuntu/steamos-manager &
+      disown || true
+      wait_steamos_manager || true
+    fi
+  fi
+fi
+
+if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+  unset XDG_SESSION_TYPE || true
+  dbus-update-activation-environment \
+    DISPLAY GAMESCOPE_WAYLAND_DISPLAY XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP \
+    DBUS_SESSION_BUS_ADDRESS SteamDeck STEAM_USE_MANGOAPP \
+    STEAM_GAMESCOPE_FANCY_SCALING_SUPPORT STEAM_GAMESCOPE_DYNAMIC_FPSLIMITER \
+    MANGOHUD_CONFIGFILE MANGOHUD_PRESETSFILE MANGOHUD_CONFIG \
+    2>/dev/null || dbus-update-activation-environment --all 2>/dev/null || true
+fi
+
+cd "${steam_arm_dir}"
+exec "${steam_arm}" "$@"

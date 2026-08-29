@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Return to Gaming Mode
+Name[es]=Volver al modo Gaming
+Comment=Leave Plasma Mobile and start Steam Deck Gamepad UI
+Comment[es]=Salir de Plasma Mobile e iniciar el modo Gaming
+Exec=steamos-mobile-to-gamescope
+Icon=steamos-gamemode
+Terminal=false
+Categories=Game;System;
+StartupNotify=false

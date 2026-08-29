@@ -1,0 +1,78 @@
+# Block Ubuntu stock Mesa forever — vendor Mesa (SM8550 Turnip) owns the GL/VK stack.
+# Dummy packages (99:26.1.6-sm8550vendor1) keep apt consistent; this pin
+# prevents Discover/apt from pulling Ubuntu 26.0.x back over them.
+Package: libegl-mesa0
+Pin: release *
+Pin-Priority: -1
+
+Package: libegl-mesa0:*
+Pin: release *
+Pin-Priority: -1
+
+Package: libgl1-mesa-dri
+Pin: release *
+Pin-Priority: -1
+
+Package: libgl1-mesa-dri:*
+Pin: release *
+Pin-Priority: -1
+
+Package: libglx-mesa0
+Pin: release *
+Pin-Priority: -1
+
+Package: libglx-mesa0:*
+Pin: release *
+Pin-Priority: -1
+
+Package: mesa-libgallium
+Pin: release *
+Pin-Priority: -1
+
+Package: mesa-libgallium:*
+Pin: release *
+Pin-Priority: -1
+
+Package: mesa-vulkan-drivers
+Pin: release *
+Pin-Priority: -1
+
+Package: mesa-vulkan-drivers:*
+Pin: release *
+Pin-Priority: -1
+
+Package: libgl1-mesa-glx
+Pin: release *
+Pin-Priority: -1
+
+Package: mesa-va-drivers
+Pin: release *
+Pin-Priority: -1
+
+Package: mesa-vdpau-drivers
+Pin: release *
+Pin-Priority: -1
+
+Package: libegl1-mesa-dev
+Pin: release *
+Pin-Priority: -1
+
+Package: libgles2-mesa-dev
+Pin: release *
+Pin-Priority: -1
+
+Package: libgbm1
+Pin: release *
+Pin-Priority: -1
+
+Package: libgbm1:*
+Pin: release *
+Pin-Priority: -1
+
+Package: libgbm-dev
+Pin: release *
+Pin-Priority: -1
+
+Package: libgbm-dev:*
+Pin: release *
+Pin-Priority: -1

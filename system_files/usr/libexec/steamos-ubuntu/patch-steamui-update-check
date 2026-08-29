@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# ARM Steam keeps BootStrapperInhibitAll so the broken CDN self-update does not
+# hang on Retry. That makes the Client updater report eresult Blocked (40) even
+# when available=false / "up to date", and Settings → Check for updates shows
+# "Error de actualización" / "Updater check error: 40".
+#
+# Soft-fail (Fail=2) is already ignored by GetMostSpecificCheckResult; Blocked
+# is not. Rewrite the SteamUI helper so Blocked + !available is treated as OK.
+# Idempotent; safe to run on every Steam launch (chunk hashes change on update).
+set -euo pipefail
+
+STEAM_ROOT="${STEAM_ROOT:-${HOME}/.local/share/Steam}"
+STEAMUI="${STEAM_ROOT}/steamui"
+
+[[ -d "$STEAMUI" ]] || exit 0
+
+python3 - "$STEAMUI" <<'PY'
+import pathlib
+import sys
+
+steamui = pathlib.Path(sys.argv[1])
+old = (
+    "GetMostSpecificCheckResult(){const e=this.m_updateState.update_check_results??"
+    "[{eresult:s.R}];let t=!1;for(const r of e)if(r.eresult!=s.R){if(r.eresult!=s.zi)"
+    "return r.eresult;t=!0}return t?s.zi:s.R}"
+)
+new = (
+    "GetMostSpecificCheckResult(){const e=this.m_updateState.update_check_results??"
+    "[{eresult:s.R}];let t=!1;for(const r of e){if(40===r.eresult&&!r.available)continue;"
+    "if(r.eresult!=s.R){if(r.eresult!=s.zi)return r.eresult;t=!0}}return t?s.zi:s.R}"
+)
+marker = "40===r.eresult&&!r.available"
+n = 0
+for path in steamui.glob("chunk*.js"):
+    text = path.read_text(encoding="utf-8", errors="strict")
+    if marker in text:
+        continue
+    if old not in text:
+        continue
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+    print(f"patch-steamui-update-check: patched {path.name}")
+    n += 1
+if n == 0 and any(marker in p.read_text(encoding="utf-8", errors="ignore") for p in steamui.glob("chunk*.js")):
+    print("patch-steamui-update-check: already applied")
+elif n == 0:
+    print("patch-steamui-update-check: no matching chunk (SteamUI layout changed?)")
+PY

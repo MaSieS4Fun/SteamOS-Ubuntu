@@ -1,0 +1,36 @@
+image: alpine/latest
+packages:
+  - gcc
+  - clang
+  - compiler-rt
+  - meson
+  - libdrm-dev
+  - gcovr
+sources:
+  - https://gitlab.freedesktop.org/emersion/libliftoff.git
+artifacts:
+  - coveragereport.tar.gz
+environment:
+  UBSAN_OPTIONS: halt_on_error=1
+tasks:
+  - setup: |
+      cd libliftoff
+      CC=gcc meson setup build-gcc/ --fatal-meson-warnings -Db_coverage=true
+      CC=clang meson setup build-clang/ --fatal-meson-warnings -Db_sanitize=address,undefined -Db_lundef=false
+  - build-gcc: |
+      cd libliftoff
+      ninja -C build-gcc/
+  - build-clang: |
+      cd libliftoff
+      ninja -C build-clang/
+  - test-gcc: |
+      cd libliftoff
+      ninja -C build-gcc/ test
+  - test-clang: |
+      cd libliftoff
+      ninja -C build-clang/ test
+  - coverage: |
+      cd libliftoff
+      ninja -C build-gcc/ coverage-html
+      cd build-gcc/meson-logs/
+      tar -czf ~/coveragereport.tar.gz coveragereport

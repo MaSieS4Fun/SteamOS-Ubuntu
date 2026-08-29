@@ -1,0 +1,209 @@
+# Reference runtime snapshot from a working SM8550 (AYN Odin 2) desktop session.
+# Captured for profile verification (HiFi DisplayPort / Pro Audio). Hostnames in
+# the dump are incidental and not part of the sm8550-resolute product branding.
+#
+=== date ===
+Sun Aug  9 01:55:29 UTC 2026
+=== os-release ===
+NAME="Fedora Linux"
+VERSION="44 (Forty Four)"
+RELEASE_TYPE=stable
+ID=fedora
+VERSION_ID=44
+VERSION_CODENAME=""
+PRETTY_NAME="Fedora Linux 44 (Forty Four)"
+ANSI_COLOR="0;38;2;60;110;180"
+LOGO=fedora-logo-icon
+CPE_NAME="cpe:/o:fedoraproject:fedora:44"
+DEFAULT_HOSTNAME="fedora"
+HOME_URL="https://fedoraproject.org/"
+DOCUMENTATION_URL="https://docs.fedoraproject.org/en-US/fedora/f44/"
+SUPPORT_URL="https://ask.fedoraproject.org/"
+BUG_REPORT_URL="https://bugzilla.redhat.com/"
+REDHAT_BUGZILLA_PRODUCT="Fedora"
+REDHAT_BUGZILLA_PRODUCT_VERSION=44
+REDHAT_SUPPORT_PRODUCT="Fedora"
+REDHAT_SUPPORT_PRODUCT_VERSION=44
+SUPPORT_END=2027-05-19
+=== uname ===
+Linux ayn-odin2.home 7.0.11 #1 SMP PREEMPT Wed Jul 22 02:10:56 UTC 2026 aarch64 GNU/Linux
+=== /proc/asound/cards ===
+ 0 [AYNOdin2       ]: sm8550 - AYN-Odin2
+                      AYN-Odin2
+=== aplay -l ===
+**** List of PLAYBACK Hardware Devices ****
+card 0: AYNOdin2 [AYN-Odin2], device 0: MultiMedia1 Playback (*) []
+  Subdevices: 1/1
+  Subdevice #0: subdevice #0
+card 0: AYNOdin2 [AYN-Odin2], device 1: MultiMedia2 Playback (*) []
+  Subdevices: 1/1
+  Subdevice #0: subdevice #0
+=== pactl list cards ===
+Card #44
+	Name: alsa_card.platform-sound
+	Driver: alsa
+	Owner Module: n/a
+	Properties:
+		device.enum.api = "udev"
+		device.api = "alsa"
+		media.class = "Audio/Device"
+		api.alsa.path = "hw:0"
+		api.alsa.card = "0"
+		api.alsa.card.name = "AYN-Odin2"
+		api.alsa.card.longname = "AYN-Odin2"
+		device.plugged.usec = "15722193"
+		device.bus_path = "platform-sound"
+		sysfs.path = "/devices/platform/sound/sound/card0"
+		device.subsystem = "sound"
+		device.form_factor = "internal"
+		device.name = "alsa_card.platform-sound"
+		device.description = "Built-in Audio"
+		device.nick = "AYN-Odin2"
+		device.icon_name = "audio-card-analog"
+		api.alsa.use-acp = "true"
+		api.acp.auto-profile = "false"
+		api.acp.auto-port = "false"
+		api.dbus.ReserveDevice1.Priority = "-20"
+		api.alsa.split-enable = "true"
+		api.dbus.ReserveDevice1 = "Audio0"
+		spa.object.id = "2"
+		factory.id = "15"
+		client.id = "43"
+		object.id = "44"
+		object.serial = "44"
+		object.path = "alsa:acp:AYNOdin2"
+		alsa.card = "0"
+		alsa.card_name = "AYN-Odin2"
+		alsa.long_card_name = "AYN-Odin2"
+		alsa.driver_name = "snd_soc_sc8280xp"
+		alsa.id = "AYNOdin2"
+		device.string = "0"
+	Profiles:
+		off: Off (sinks: 0, sources: 0, priority: 0, available: yes)
+		HiFi (Headphones, Speaker): HiFi quality Music. (Headphones, Speaker) (sinks: 2, sources: 0, priority: 8350, available: no)
+		HiFi (DisplayPort, Speaker): HiFi quality Music. (DisplayPort, Speaker) (sinks: 2, sources: 0, priority: 8250, available: yes)
+		pro-audio: Pro Audio (sinks: 2, sources: 1, priority: 1, available: yes)
+	Active Profile: HiFi (DisplayPort, Speaker)
+	Ports:
+		[Out] DisplayPort: DisplayPort playback (type: Unknown, priority: 100, latency offset: 0 usec, availability group: DP0, available)
+			Properties:
+				port.type = "unknown"
+				port.availability-group = "DP0"
+				device.icon_name = "audio-speakers"
+				card.profile.port = "0"
+			Part of profile(s): HiFi (DisplayPort, Speaker)
+		[Out] Speaker: Speaker playback (type: Speaker, priority: 150, latency offset: 0 usec, not available)
+			Properties:
+				port.type = "speaker"
+				device.icon_name = "audio-speakers"
+				card.profile.port = "1"
+			Part of profile(s): HiFi (DisplayPort, Speaker), HiFi (Headphones, Speaker)
+		[Out] Headphones: Headphones Playback (type: Headphones, priority: 200, latency offset: 0 usec, availability group: Headphone, not available)
+			Properties:
+				port.type = "headphones"
+				port.availability-group = "Headphone"
+				device.icon_name = "audio-headphones"
+				card.profile.port = "2"
+			Part of profile(s): HiFi (Headphones, Speaker)
+=== pactl list sinks short ===
+49	alsa_output.platform-sound.HiFi__DisplayPort__sink	PipeWire	s16le 2ch 48000Hz	SUSPENDED
+50	alsa_output.platform-sound.HiFi__Speaker__sink	PipeWire	s16le 2ch 48000Hz	SUSPENDED
+=== wpctl status ===
+PipeWire 'pipewire-0' [1.6.8, user@fedora, cookie:3267245854]
+ └─ Clients:
+        32.                                     [1.6.8, user@ayn-odin2.home, pid:3059]
+        33. WirePlumber                         [1.6.8, user@fedora, pid:1673]
+        34. KDE Power Management System         [1.6.8, user@ayn-odin2.home, pid:3077]
+        43. WirePlumber [export]                [1.6.8, user@fedora, pid:1673]
+        61. pipewire                            [1.6.8, user@fedora, pid:1813]
+        62. kwin_wayland                        [1.6.8, user@ayn-odin2.home, pid:2933]
+        63. libcanberra                         [1.6.8, user@ayn-odin2.home, pid:3039]
+        64.                                     [1.6.8, user@ayn-odin2.home, pid:3039]
+        67. libcanberra                         [1.6.8, user@ayn-odin2.home, pid:3059]
+        68. wpctl                               [1.6.8, user@ayn-odin2.home, pid:7024]
+        70. plasmashell                         [1.6.8, user@ayn-odin2.home, pid:3059]
+        71.                                     [1.6.8, user@ayn-odin2.home, pid:3039]
+        74. Chromium input                      [1.6.8, user@ayn-odin2.home, pid:4211]
+        76. Dolphin                             [1.6.8, user@ayn-odin2.home, pid:3779]
+
+Audio
+ ├─ Devices:
+ │      44. Built-in Audio                      [alsa]
+ │  
+ ├─ Sinks:
+ │  *   49. Built-in Audio DisplayPort playback [vol: 1.00]
+ │      50. Built-in Audio Speaker playback     [vol: 0.40]
+ │  
+ ├─ Sources:
+ │  
+ ├─ Filters:
+ │  
+ └─ Streams:
+
+Video
+ ├─ Devices:
+ │      51. Iris Decoder                        [v4l2]
+ │      52. Iris Encoder                        [v4l2]
+ │  
+ ├─ Sinks:
+ │  
+ ├─ Sources:
+ │  
+ ├─ Filters:
+ │  
+ └─ Streams:
+
+Settings
+ └─ Default Configured Devices:
+=== rpm audio pkgs ===
+pipewire-1.6.8-1.fc44.aarch64
+wireplumber-0.5.14-1.fc44.aarch64
+pipewire-pulseaudio-1.6.8-1.fc44.aarch64
+alsa-ucm-1.2.16.1-1.fc44.noarch
+alsa-utils-1.2.16-1.fc44.aarch64
+pipewire-alsa-1.6.8-1.fc44.aarch64
+alsa-lib-1.2.16.1-1.fc44.aarch64
+qcom-firmware-20260622-1.fc44.noarch
+=== lsmod audio ===
+snd_seq                73728  6
+snd_seq_device         12288  1 snd_seq
+q6prm_clocks           12288  15
+q6apm_lpass_dais       12288  1
+snd_q6dsp_common       45056  2 q6apm_lpass_dais,q6prm_clocks
+q6apm_dai              16384  1
+q6prm                  12288  1 q6prm_clocks
+snd_q6apm              40960  4 q6apm_dai,q6prm,q6apm_lpass_dais
+snd_soc_lpass_tx_macro    98304  2
+snd_soc_wcd938x        98304  1
+snd_soc_wcd938x_sdw    20480  1 snd_soc_wcd938x
+regmap_sdw             12288  1 snd_soc_wcd938x_sdw
+snd_soc_lpass_wsa_macro    65536  0
+qcom_q6v5_pas          36864  0
+snd_soc_aw88166        28672  2
+snd_soc_wcd_mbhc       24576  1 snd_soc_wcd938x
+qcom_pil_info          12288  1 qcom_q6v5_pas
+snd_soc_lpass_va_macro    53248  4
+snd_soc_lpass_rx_macro   110592  2
+qcom_q6v5              12288  1 qcom_q6v5_pas
+snd_soc_sc8280xp       12288  6
+snd_soc_wcd_common     12288  2 snd_soc_wcd938x_sdw,snd_soc_wcd938x
+snd_soc_lpass_macro_common    12288  4 snd_soc_lpass_wsa_macro,snd_soc_lpass_va_macro,snd_soc_lpass_rx_macro,snd_soc_lpass_tx_macro
+qcom_sysmon            12288  2 qcom_q6v5_pas,qcom_q6v5
+snd_soc_qcom_sdw       12288  1 snd_soc_sc8280xp
+snd_soc_wcd_classh     16384  1 snd_soc_wcd938x
+soundwire_qcom         28672  2
+slimbus                28672  1 soundwire_qcom
+snd_soc_qcom_common    12288  1 snd_soc_sc8280xp
+snd_soc_aw88395_lib    32768  1 snd_soc_aw88166
+snd_soc_hdmi_codec     16384  1
+soundwire_bus        1138688  6 regmap_sdw,snd_soc_wcd_common,snd_soc_wcd938x_sdw,snd_soc_qcom_sdw,snd_soc_wcd938x,soundwire_qcom
+snd_soc_core          237568  16 snd_q6apm,q6apm_dai,snd_soc_sc8280xp,snd_soc_qcom_common,q6apm_lpass_dais,snd_soc_hdmi_codec,snd_soc_lpass_wsa_macro,snd_soc_qcom_sdw,snd_soc_lpass_va_macro,snd_soc_wcd938x,snd_soc_wcd_mbhc,snd_soc_lpass_rx_macro,snd_soc_aw88166,soundwire_qcom,snd_soc_lpass_tx_macro,snd_soc_wcd_classh
+snd_compress           20480  1 snd_soc_core
+qcom_common            16384  1 qcom_q6v5_pas
+snd_pcm_dmaengine      16384  1 snd_soc_core
+snd_pcm               135168  7 q6apm_dai,q6apm_lpass_dais,snd_soc_hdmi_codec,snd_compress,snd_soc_core,snd_soc_lpass_rx_macro,snd_pcm_dmaengine
+snd_timer              36864  2 snd_seq,snd_pcm
+snd                    90112  22 snd_seq,snd_seq_device,snd_soc_qcom_common,snd_soc_hdmi_codec,snd_timer,snd_compress,snd_soc_core,snd_pcm
+soundcore              12288  1 snd
+pinctrl_sm8550_lpass_lpi    16384  0
+pinctrl_lpass_lpi      12288  12 pinctrl_sm8550_lpass_lpi

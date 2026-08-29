@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# No Jupiter BIOS on SM8550 — no elevation needed.
+set -euo pipefail
+exec /usr/bin/jupiter-biosupdate "$@"
