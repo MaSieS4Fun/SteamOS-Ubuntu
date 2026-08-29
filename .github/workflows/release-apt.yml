@@ -36,6 +36,7 @@ jobs:
           fi
           mkdir -p packaging/apt/.gnupg
           chmod 700 packaging/apt/.gnupg
+          export GNUPGHOME="${GITHUB_WORKSPACE}/packaging/apt/.gnupg"
           echo "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
           echo "APT_SIGN=1" >> "$GITHUB_ENV"
           echo "APT_GPG_KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '$1==\"sec\"{print $5; exit}')" >> "$GITHUB_ENV"
