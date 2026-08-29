@@ -13,7 +13,10 @@ fi
 log() { printf '==> [gyro-desktop] %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-[[ "${EUID}" -eq 0 ]] || die "Run as root"
+# Live install to / needs root; deb staging into a rootfs path does not.
+if [[ "${EUID}" -ne 0 && "${ROOTFS}" == "/" ]]; then
+  die "Run as root"
+fi
 
 if [[ "$ROOTFS" != "/" ]]; then
   ROOTFS="${ROOTFS%/}"

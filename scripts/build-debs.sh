@@ -274,6 +274,7 @@ stage_gyro_desktop() {
     local staging="$1"
 
     stage_empty "${staging}"
+    mkdir -p "${staging}/usr"
     bash "${ROOT_DIR}/vendor/gyro-desktop/install.sh" "${staging}"
 
     write_control "${staging}" <<EOF
