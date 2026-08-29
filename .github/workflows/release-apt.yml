@@ -31,15 +31,19 @@ jobs:
           APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
         run: |
           if [[ -z "${APT_GPG_PRIVATE_KEY}" ]]; then
-            echo "WARN: APT_GPG_PRIVATE_KEY not set — unsigned repo"
-            exit 0
+            echo "ERROR: APT_GPG_PRIVATE_KEY secret is missing"
+            echo "Add it in Settings → Secrets → Actions (armor export of packaging/apt/.gnupg)"
+            exit 1
           fi
           mkdir -p packaging/apt/.gnupg
           chmod 700 packaging/apt/.gnupg
           export GNUPGHOME="${GITHUB_WORKSPACE}/packaging/apt/.gnupg"
           echo "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
+          key_id="$(gpg --list-secret-keys --with-colons | awk -F: '$1=="sec"{print $5; exit}')"
+          [[ -n "${key_id}" ]] || { echo "ERROR: GPG import failed"; exit 1; }
           echo "APT_SIGN=1" >> "$GITHUB_ENV"
-          echo "APT_GPG_KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '$1==\"sec\"{print $5; exit}')" >> "$GITHUB_ENV"
+          echo "APT_GPG_KEY_ID=${key_id}" >> "$GITHUB_ENV"
+          echo "Imported signing key ${key_id}"
 
       - name: Build .deb packages
         run: |
@@ -49,9 +53,12 @@ jobs:
       - name: Generate apt repository
         env:
           GNUPGHOME: ${{ github.workspace }}/packaging/apt/.gnupg
+          APT_SIGN: "1"
+          APT_GPG_KEY_ID: ${{ env.APT_GPG_KEY_ID }}
         run: |
-          export APT_SIGN="${APT_SIGN:-0}"
           ./scripts/generate-apt-repo.sh
+          [[ -f output/apt-repo/InRelease ]] || { echo "ERROR: unsigned apt repo (missing InRelease)"; exit 1; }
+          ls -la output/apt-repo/InRelease output/apt-repo/Release.gpg packaging/apt/steamos-ubuntu.gpg
 
       - name: Upload debs artifact
         uses: actions/upload-artifact@v4
