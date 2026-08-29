@@ -52,19 +52,15 @@ part_by_label() {
 
 detect_layout() {
   local device=$1
-  HAS_ROCKNIX=0 HAS_STORAGE=0 HAS_ARMADA_BOOT=0 HAS_ARMADA_ROOT=0
+  HAS_ROCKNIX=0 HAS_STORAGE=0
 
   [[ -n $(part_by_label "$device" ROCKNIX || true) ]] && HAS_ROCKNIX=1
   [[ -n $(part_by_label "$device" STORAGE || true) ]] && HAS_STORAGE=1
-  [[ -n $(part_by_label "$device" ARMADA_BOOT || true) ]] && HAS_ARMADA_BOOT=1
-  [[ -n $(part_by_label "$device" ARMADA_ROOT || true) ]] && HAS_ARMADA_ROOT=1
 
-  if (( HAS_ARMADA_BOOT || HAS_ARMADA_ROOT )); then
-    echo "armada"
-  elif (( HAS_ROCKNIX && HAS_STORAGE )); then
+  if (( HAS_ROCKNIX && HAS_STORAGE )); then
     echo "masios-rocknix"
   elif (( HAS_ROCKNIX && ! HAS_STORAGE )); then
-    echo "partial"
+    echo "incompatible-or-partial"
   else
     echo "none"
   fi
@@ -139,12 +135,10 @@ main() {
   log "Layout:     ${LAYOUT}"
 
   case "$LAYOUT" in
-    armada)
-      die "ARMADA layout detected. Use armada-installer instead."
-      ;;
-    partial)
-      die "Partial install: ROCKNIX exists but STORAGE is missing.
-Re-run: sudo ./install-masios-to-internal.sh --deploy-only"
+    incompatible-or-partial)
+      die "Incompatible or partial UFS layout. Expected ROCKNIX + STORAGE.
+Re-run: sudo ./install-masios-to-internal.sh --deploy-only
+Or use ABL 'Uninstall ROCKNIX' before a fresh install."
       ;;
     none)
       die "No MaSi-OS / ROCKNIX internal partitions found."

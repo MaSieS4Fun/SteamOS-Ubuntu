@@ -58,3 +58,5 @@ If you previously installed as «Energía SM8550», remove the old entry in Deck
 ## Image bake
 
 Staged to `/usr/share/steamos-ubuntu/decky-plugins/power-managment/` during image finalize. Synced to `~/homebrew/plugins/` when Decky is installed.
+
+Upstream credits: [`CREDITS.md`](../../../CREDITS.md) (repository root).

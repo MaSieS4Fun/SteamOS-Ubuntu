@@ -57,9 +57,9 @@ By cloning, downloading, or running these scripts, **you confirm that**:
 
 If you do not agree, **do not run the installer**.
 
-## ARMADA layout
+## Other UFS layouts
 
-These scripts target the **MaSi-OS / ROCKNIX two-partition layout** (`ROCKNIX` + `STORAGE`). They are **not** compatible with **ARMADA** three-partition layouts. Use ARMADA-specific tools for those devices.
+These scripts target the **MaSi-OS / ROCKNIX two-partition layout** (`ROCKNIX` + `STORAGE`). They are **not** compatible with other dual-boot schemes that use additional Linux partitions or different boot chains. Repartition via ABL **Uninstall ROCKNIX** (or a full firmware reflash) before attempting a fresh install if your device has a non-matching layout.
 
 ## License
 

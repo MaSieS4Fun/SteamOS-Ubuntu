@@ -10,6 +10,8 @@
 
 Tras instalar Decky, `sync-decky-bundled-plugins.sh` instala los tres plugins en `~/homebrew/plugins/`.
 
+Atribución upstream completa: [`CREDITS.md`](../../CREDITS.md) en la raíz del repositorio.
+
 ## Antes de crear la imagen
 
 Construir frontends TypeScript (requiere Node 18+ / pnpm):

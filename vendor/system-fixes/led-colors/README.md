@@ -20,7 +20,7 @@ Expected hardware (AYN Odin 2 / sm8550-class):
 Each zone: `multi_intensity` = `R G B`, `brightness` = 0–255 (`pwm-leds-multicolor`).
 
 Compatible with the Batocera Custom Qualcomm / `batoled` sysfs RGB approach.  
-See monorepo [`CREDITS.md`](../CREDITS.md).
+See [`CREDITS.md`](../../../CREDITS.md) at the repository root.
 
 ## Install
 

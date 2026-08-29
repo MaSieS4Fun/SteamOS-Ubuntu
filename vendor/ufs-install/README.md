@@ -11,7 +11,7 @@ Install **MaSi-OS** (or compatible Armbian SM8550 images) on **internal UFS** al
 - Qualcomm **SM8550** with **ROCKNIX ABL** installed  
 - Tested targets: **AYN Odin 2**, Odin 2 Mini/Portal, **Thor**, **Retroid Pocket 6**, similar SM8550 handhelds  
 
-**Not** for ARMADA three-partition layouts — use ARMADA tools instead.
+**Not** for other internal Linux layouts that use three or more dedicated partitions — this installer only supports the **ROCKNIX + STORAGE** two-partition model.
 
 ## What you need before starting
 

@@ -1,5 +1,7 @@
 # CREDITS — Upstream sources
 
+> **SteamOS-Ubuntu:** atribución global del proyecto en [`../../CREDITS.md`](../../CREDITS.md). Este archivo detalla el árbol del kernel.
+
 **MaSi-OS Kernel Updater** —
 [github.com/MaSieS4Fun/MaSi-OS-Kernel-Updater](https://github.com/MaSieS4Fun/MaSi-OS-Kernel-Updater)
 

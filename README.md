@@ -144,4 +144,4 @@ sudo ./vendor/audio/scripts/install-into-rootfs.sh /media/odin2/STORAGE
 
 ## License
 
-Project glue: MIT. Vendor trees keep their own licenses.
+Project glue: MIT. Vendor trees keep their own licenses. See [`CREDITS.md`](CREDITS.md) for full upstream attribution.

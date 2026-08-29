@@ -51,17 +51,13 @@ lsblk -o NAME,SIZE,FSTYPE,LABEL,PARTLABEL "$DEVICE"
 
 RK=$(part_by_label "$DEVICE" ROCKNIX || true)
 ST=$(part_by_label "$DEVICE" STORAGE || true)
-AB=$(part_by_label "$DEVICE" ARMADA_BOOT || true)
-AR=$(part_by_label "$DEVICE" ARMADA_ROOT || true)
 UD=$(part_by_label "$DEVICE" userdata || true)
 
-if [[ -n "$RK" && -n "$ST" && -z "$AB" && -z "$AR" ]]; then
+if [[ -n "$RK" && -n "$ST" ]]; then
   LAYOUT="masios-rocknix"
-elif [[ -n "$RK" && -n "$AB" && -n "$AR" ]]; then
-  LAYOUT="armada"
-elif [[ -n "$RK" && -z "$ST" && -z "$AR" ]]; then
-  LAYOUT="partial-boot-only"
-elif [[ -z "$RK" && -z "$ST" && -z "$AB" && -z "$AR" ]]; then
+elif [[ -n "$RK" && -z "$ST" ]]; then
+  LAYOUT="incompatible-or-partial"
+elif [[ -z "$RK" && -z "$ST" ]]; then
   LAYOUT="android-only"
 else
   LAYOUT="mixed-or-unknown"
@@ -75,15 +71,11 @@ case "$LAYOUT" in
     echo "    ROCKNIX  = boot / KERNEL  (${RK})"
     echo "    STORAGE  = Linux rootfs  (${ST})"
     ;;
-  armada)
-    echo "  ARMADA style (3 Linux partitions):"
-    echo "    ROCKNIX     = ESP / ABL reads KERNEL  (${RK})"
-    echo "    ARMADA_BOOT = /boot (ext4)             (${AB})"
-    echo "    ARMADA_ROOT = root (btrfs)             (${AR})"
-    echo "  MaSi-OS fix scripts do NOT apply to ARMADA root layout."
-    ;;
-  partial-boot-only)
-    warn "Only ROCKNIX exists; STORAGE/ARMADA_ROOT missing (partial/failed install)."
+  incompatible-or-partial)
+    echo "  ROCKNIX present but STORAGE missing, or layout is not ROCKNIX + STORAGE."
+    echo "    ROCKNIX  = boot / KERNEL  (${RK:-missing})"
+    echo "    STORAGE  = Linux rootfs  (${ST:-missing})"
+    echo "  MaSi-OS fix scripts only apply to the two-partition ROCKNIX + STORAGE model."
     ;;
   android-only)
     echo "  No internal Linux partitions. Android-only or after factory reset."
@@ -141,12 +133,6 @@ if [[ -n "$ST" && -b "$ST" ]]; then
   fi
 fi
 
-if [[ -n "$AR" && -b "$AR" ]]; then
-  echo
-  echo "--- Internal ARMADA_ROOT (${AR}) ---"
-  lsblk -o NAME,SIZE,FSTYPE,LABEL,UUID "$AR"
-fi
-
 if [[ -n "$UD" ]]; then
   echo
   log "Android userdata: ${UD} ($(lsblk -rn -o SIZE "$UD"))"
@@ -163,14 +149,11 @@ case "$LAYOUT" in
     echo "  Boot/cmdline fix:   sudo ./ufs-fix-internal-boot.sh"
     echo "  Android recovery:   Factory data reset (userdata was wiped on install)"
     ;;
-  armada)
-    echo "  Use ARMADA tools:   sudo armada-installer  (or armada-bootimg-update)"
-    echo "  Remove internal:    sudo armada-installer reset"
-    echo "  MaSi-OS fix script: NOT compatible with ARMADA layout"
-    ;;
-  partial-boot-only|mixed-or-unknown)
-    echo "  Partial install:    re-run install OR ABL 'Uninstall ROCKNIX'"
-    echo "                      OR armada-installer reset (if ARMADA remnants)"
+  incompatible-or-partial|mixed-or-unknown)
+    echo "  Expected layout:    ROCKNIX + STORAGE (two Linux partitions)"
+    echo "  Partial install:    sudo ./install-masios-to-internal.sh --deploy-only"
+    echo "  Other layouts:      ABL 'Uninstall ROCKNIX' or repartition before retrying"
+    echo "  Boot/cmdline fix:   only if ROCKNIX + STORAGE already exist"
     ;;
   android-only)
     echo "  Ready for fresh install: sudo ./install-masios-to-internal.sh"
@@ -179,5 +162,5 @@ esac
 echo
 echo "  Restore full Android userdata size (expand partition):"
 echo "    NOT done by ufs-fix-internal-boot.sh"
-echo "    Use ABL 'Uninstall ROCKNIX' OR armada-installer reset OR EDL flash"
+echo "    Use ABL 'Uninstall ROCKNIX' OR EDL flash"
 echo "================================================================"
