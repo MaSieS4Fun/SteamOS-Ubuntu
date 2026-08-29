@@ -32,15 +32,22 @@ jobs:
         run: |
           if [[ -z "${APT_GPG_PRIVATE_KEY}" ]]; then
             echo "ERROR: APT_GPG_PRIVATE_KEY secret is missing"
-            echo "Add it in Settings → Secrets → Actions (armor export of packaging/apt/.gnupg)"
+            echo "Settings → Secrets → Actions → New repository secret"
+            echo "Paste full armor block from: gpg --export-secret-keys --armor KEYID"
             exit 1
           fi
           mkdir -p packaging/apt/.gnupg
           chmod 700 packaging/apt/.gnupg
           export GNUPGHOME="${GITHUB_WORKSPACE}/packaging/apt/.gnupg"
-          echo "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
+          key_file="${RUNNER_TEMP}/apt-signing.key"
+          printf '%s\n' "${APT_GPG_PRIVATE_KEY}" > "${key_file}"
+          gpg --batch --import "${key_file}" 2>&1 || { echo "ERROR: gpg --import failed"; exit 1; }
+          rm -f "${key_file}"
           key_id="$(gpg --list-secret-keys --with-colons | awk -F: '$1=="sec"{print $5; exit}')"
-          [[ -n "${key_id}" ]] || { echo "ERROR: GPG import failed"; exit 1; }
+          if [[ -z "${key_id}" ]]; then
+            echo "ERROR: no secret key after import (check secret has BEGIN+END lines)"
+            exit 1
+          fi
           echo "APT_SIGN=1" >> "$GITHUB_ENV"
           echo "APT_GPG_KEY_ID=${key_id}" >> "$GITHUB_ENV"
           echo "Imported signing key ${key_id}"

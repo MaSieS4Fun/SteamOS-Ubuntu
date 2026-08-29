@@ -82,7 +82,7 @@ Package: mesa-easy-manager
 Version: ${PKG_MESA_EASY_MANAGER}
 Architecture: arm64
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
-Depends: python3, python3-gi, gir1.2-gtk-3.0, policykit-1, pkexec
+Depends: python3, python3-gi, gir1.2-gtk-3.0, polkitd, pkexec
 Description: MESA Easy Manager — Freedreno/Turnip Vulkan switcher for Adreno SM8550
  Homepage: https://github.com/${STEAMOS_UBUNTU_GITHUB_REPO}
 EOF

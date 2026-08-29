@@ -30,13 +30,13 @@ shopt -u nullglob
 [[ ${#debs[@]} -gt 0 ]] || die "no .deb files in ${IN_DEBS}"
 
 rm -rf "${OUT_REPO}"
-mkdir -p "${OUT_REPO}/pool"
-cp -a "${debs[@]}" "${OUT_REPO}/pool/"
+mkdir -p "${OUT_REPO}"
+cp -a "${debs[@]}" "${OUT_REPO}/"
 
 log "Generating Packages index (${#debs[@]} debs)"
 (
-    cd "${OUT_REPO}/pool"
-    apt-ftparchive packages . > "${OUT_REPO}/Packages"
+    cd "${OUT_REPO}"
+    apt-ftparchive packages . > Packages
 )
 gzip -9cn "${OUT_REPO}/Packages" > "${OUT_REPO}/Packages.gz"
 
