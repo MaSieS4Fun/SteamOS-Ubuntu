@@ -4,7 +4,7 @@ SteamOS-like Linux Gaming OS for ARM64 handhelds (SM8550 / Adreno 740), inspired
 
 ## Supported devices
 
-boots on multiple AYN and compatible handhelds via an **ABL multidevice `boot/KERNEL`** (ROCKNIX ABL)[https://github.com/ROCKNIX/abl]:
+boots on multiple AYN and compatible handhelds via an **ABL multidevice `boot/KERNEL`** [ROCKNIX ABL](https://github.com/ROCKNIX/abl):
 
 | Device | Status |
 |--------|--------|
@@ -28,8 +28,9 @@ Default desktop user created in the image:
 | password | `steam` |
 
 # Decky Loader
+
 - For Decky Loader to work, you need to install an x86_64-to-ARM instruction translation layer on the system.
-- In the "ARM-Manager" application menu, you will find installation scripts for BOX64 and FEXEmu.
+- In the "ARM-Manager" application menu, you will find installation scripts for BOX64 or FEXEmu.
 
 # Installation:
 - First, install [ROCKNIX ABL](https://github.com/ROCKNIX/abl).
