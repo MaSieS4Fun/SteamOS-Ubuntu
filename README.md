@@ -1,4 +1,5 @@
-# SteamOS-Ubuntu
+# <img width="1585" height="434" alt="logo" src="https://github.com/user-attachments/assets/38126449-3ab3-4e75-9cdf-00367ab11670" />
+
 
 SteamOS-like Linux Gaming OS for ARM64 handhelds (SM8550 / Adreno 740), inspired by [Universal Blue](https://github.com/ublue-os) / Bazzite, built on **Ubuntu Resolute**.
 
