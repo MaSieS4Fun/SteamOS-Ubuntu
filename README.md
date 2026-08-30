@@ -14,6 +14,8 @@ SteamOS-like Linux Gaming OS for ARM64 handhelds (SM8550 / Adreno 740), inspired
 
 ## Supported devices
 
+### SteamOS-Ubuntu is a multi-device system with EFI boot, designed to be compatible with the ROCKNIX ABL. If you already have the ABL configured, you simply need to flash the image onto the SD card and it should work.
+
 | Device | Status |
 |--------|--------|
 | AYN Odin 2 | Supported |
