@@ -12,9 +12,9 @@ SteamOS-like Linux Gaming OS for ARM64 handhelds (SM8550 / Adreno 740), inspired
 > - The devices listed below should be compatible with the system, but some features may not work or may not work properly.
 > - The system starts with a black screen and no logos. The first boot may take up to 2–3 minutes! Please be patient.
 
-## Supported devices
+SteamOS-Ubuntu is a multi-device system with EFI boot, designed to be compatible with the ROCKNIX ABL. If you already have the ABL configured, you simply need to flash the image onto the SD card and it should work.
 
-### SteamOS-Ubuntu is a multi-device system with EFI boot, designed to be compatible with the ROCKNIX ABL. If you already have the ABL configured, you simply need to flash the image onto the SD card and it should work.
+# Supported devices
 
 | Device | Status |
 |--------|--------|
