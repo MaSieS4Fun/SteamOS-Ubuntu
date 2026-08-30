@@ -27,11 +27,10 @@ SteamOS-like Linux Gaming OS for ARM64 handhelds (SM8550 / Adreno 740), inspired
 | AYANEO Pocket DMG | Supported |
 | AYANEO Pocket S 2K | Supported |
 
-
-Default desktop user created in the image:
+---
+### System User
 
 | user     | `steam` |
-
 | password | `steam` |
 
 # Decky Loader
