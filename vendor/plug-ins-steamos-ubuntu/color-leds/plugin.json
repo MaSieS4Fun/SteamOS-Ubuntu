@@ -1,6 +1,6 @@
 {
   "name": "SM8550-LED",
-  "author": "SteamOS-Ubuntu",
+  "author": "SteamOS-Ubuntu (based on Hooandee/decky-colores)",
   "api_version": 1,
   "flags": ["root"],
   "version": "0.1.7",

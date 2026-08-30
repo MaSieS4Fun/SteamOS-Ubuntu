@@ -39,4 +39,10 @@ fi
 systemctl enable inputplumber.service 2>/dev/null || true
 systemctl restart inputplumber.service 2>/dev/null || systemctl start inputplumber.service || true
 sleep 1
+
+if [[ -x /usr/bin/fixpad-sm8550 ]]; then
+  log "Apply AYN stick range (±740)"
+  /usr/bin/fixpad-sm8550 apply || true
+fi
+
 log "Gaming Mode pad ready (deck-uhid + IMU)"

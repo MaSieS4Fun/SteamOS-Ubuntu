@@ -861,6 +861,23 @@ if [[ "${SKIP_STEAMOS_APT_PACKAGES:-0}" != "1" ]] \
   "${ROOT_DIR}/scripts/install-steamos-ubuntu-apt-packages.sh" "$ROOTFS"
 fi
 
+# Post apt-bake: fixpad + session hooks (gyro .deb may overwrite vendor binaries)
+if [[ -x "${ROOT_DIR}/vendor/fixpad-sm8550/install.sh" ]]; then
+  log "fixpad-sm8550 (AYN stick range + desktop idle wake) → rootfs"
+  if "${ROOT_DIR}/vendor/fixpad-sm8550/install.sh" "$ROOTFS"; then
+    log "fixpad-sm8550 installed OK"
+  else
+    log "WARN: fixpad-sm8550 bake failed — on device: sudo ./vendor/fixpad-sm8550/install.sh"
+  fi
+fi
+if [[ -f "${SRC}/usr/bin/gamescope-session" ]]; then
+  install -m 0755 "${SRC}/usr/bin/gamescope-session" "${ROOTFS}/usr/bin/gamescope-session"
+fi
+if [[ -x "${ROOT_DIR}/vendor/gyro-desktop/install.sh" ]]; then
+  log "gyro-desktop refresh (post apt-bake hooks)"
+  "${ROOT_DIR}/vendor/gyro-desktop/install.sh" "$ROOTFS" || true
+fi
+
 # Marker for QA
 install -d "${ROOTFS}/usr/share/sm8550-steamos"
 {
@@ -875,7 +892,7 @@ install -d "${ROOTFS}/usr/share/sm8550-steamos"
   echo "steam-client-home-only=1"
   echo "snap=disabled"
   echo "browser=brave-only"
-  echo "gamepad=inputplumber+sdl2"
+  echo "gamepad=inputplumber+sdl2+fixpad-sm8550"
   if [[ -f "${ROOTFS}/usr/share/sm8550-steamos/inputplumber-ok.txt" ]]; then
     echo "inputplumber=ok"
   else

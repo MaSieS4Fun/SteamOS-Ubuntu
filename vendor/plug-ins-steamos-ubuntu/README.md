@@ -2,15 +2,15 @@
 
 ## Empaquetado en imagen
 
-| Plugin | Origen | En imagen |
-|--------|--------|-----------|
-| `power-managment/` | Perfiles SM8550 | `/usr/share/steamos-ubuntu/decky-plugins/` → sync a `~/homebrew/plugins/` tras instalar Decky |
-| `color-leds/` | RGB LED SM8550 | idem |
-| `decky-lsfg-vk/` | LSFG framegen | Copia completa a `/home/steam/` (`~/lsfg`, `~/.config/lsfg-vk`, `~/.local/…`) + plugin en bundle |
+| Plugin | Upstream basis | In image |
+|--------|----------------|----------|
+| `power-managment/` | [Hooandee/panel-de-control](https://github.com/Hooandee/panel-de-control) → SM8550 Power | `/usr/share/steamos-ubuntu/decky-plugins/` → `~/homebrew/plugins/` after Decky install |
+| `color-leds/` | [Hooandee/decky-colores](https://github.com/Hooandee/decky-colores) → SM8550 LED | same |
+| `decky-lsfg-vk/` | LSFG framegen (PancakeTAS / xXJSONDeruloXx) | Full snapshot under `/home/steam/` + plugin bundle |
 
-Tras instalar Decky, `sync-decky-bundled-plugins.sh` instala los tres plugins en `~/homebrew/plugins/`.
+After Decky install, `sync-decky-bundled-plugins.sh` installs all three plugins into `~/homebrew/plugins/`.
 
-Atribución upstream completa: [`CREDITS.md`](../../CREDITS.md) en la raíz del repositorio.
+Full upstream credits: [`CREDITS.md`](../../CREDITS.md) at the repository root.
 
 ## Antes de crear la imagen
 

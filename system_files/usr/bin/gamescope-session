@@ -38,6 +38,12 @@ if [[ -x /usr/bin/gyro-desktop-gamescope ]]; then
   sudo -n /usr/bin/gyro-desktop-gamescope 2>&1 || /usr/bin/gyro-desktop-gamescope 2>&1 || true
 fi
 
+# AYN rsinput stick range (±1408 → ±740) — baked fix, no user action
+if [[ -x /usr/bin/fixpad-sm8550 ]]; then
+  session_debug "fixpad-sm8550: apply gaming sticks"
+  /usr/bin/fixpad-sm8550 apply 2>&1 || true
+fi
+
 export HOME="${HOME:-/home/steam}"
 export USER="${USER:-steam}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"

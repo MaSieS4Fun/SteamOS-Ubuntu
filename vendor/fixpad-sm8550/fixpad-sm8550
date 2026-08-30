@@ -1,0 +1,313 @@
+#!/usr/bin/env bash
+# fixpad-sm8550 — AYN SM8550 built-in pad: stick range + desktop idle wake
+#
+# Fixes:
+#   1) Stick ABS range ~±1407/1408 → ±740 (both sticks, Gaming + Desktop)
+#   2) Plasma screen dimming while playing on Desktop (pad activity = user idle reset)
+#
+# Usage:
+#   ./fixpad-sm8550 install          # daemon + apply (default ±740)
+#   ./fixpad-sm8550 apply [740]      # one-shot sticks (good for Gaming Mode test)
+#   ./fixpad-sm8550 restore          # sticks back to kernel stock
+#   ./fixpad-sm8550 status           # show pad + current ABS range
+#   ./fixpad-sm8550 uninstall        # remove user service
+#
+# Requires: python3, python3-evdev, python3-dbus
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f /usr/libexec/steamos-ubuntu/fixpad-sm8550-daemon.py ]]; then
+  DAEMON_SRC="/usr/libexec/steamos-ubuntu/fixpad-sm8550-daemon.py"
+  INSTALL_BIN="/usr/libexec/steamos-ubuntu/fixpad-sm8550-daemon.py"
+else
+  DAEMON_SRC="${HERE}/fixpad-sm8550-daemon.py"
+  INSTALL_BIN="${XDG_BIN_HOME:-$HOME/.local/bin}/fixpad-sm8550-daemon"
+fi
+DEFAULT_STOCK=1408
+DEFAULT_TARGET=740
+USER_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+UNIT_NAME="fixpad-sm8550.service"
+UNIT_PATH="${USER_UNIT_DIR}/${UNIT_NAME}"
+
+log() { printf '==> fixpad-sm8550: %s\n' "$*"; }
+warn() { printf '==> fixpad-sm8550: WARNING: %s\n' "$*" >&2; }
+die() { printf 'ERROR: fixpad-sm8550: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") <command> [target]
+
+Commands:
+  install [740]   Install user daemon + apply stick range (default ±740)
+  apply [740]     One-shot stick rescale (use in Gaming Mode if daemon not running)
+  restore         Restore kernel stock stick range (±1408 typical)
+  status          Show gamepad device and stick ABS ranges
+  uninstall       Remove installed daemon and user unit
+  help            Show this help
+
+Environment:
+  FIXPAD_TARGET=740          Target stick half-range
+  FIXPAD_STOCK=1408          Expected stock half-range (auto-read when possible)
+  FIXPAD_WAKE_DEADZONE=120   Min stick deflection to reset Plasma idle
+EOF
+}
+
+need_python_deps() {
+  local rc=0
+  python3 - <<'PY' || rc=$?
+import sys
+try:
+    import evdev  # noqa: F401
+except ImportError:
+    sys.exit(2)
+try:
+    import dbus  # noqa: F401
+except ImportError:
+    sys.exit(3)
+sys.exit(0)
+PY
+  case "$rc" in
+    0) ;;
+    2) die "Missing python3-evdev — run: sudo apt install python3-evdev" ;;
+    3) die "Missing python3-dbus — run: sudo apt install python3-dbus" ;;
+    *) die "python3 check failed (exit $rc)" ;;
+  esac
+}
+
+find_event_node() {
+  python3 - "$@" <<'PY'
+import sys
+from evdev import InputDevice, list_devices
+
+names = {
+    "AYN Odin2 Gamepad",
+    "AYN Thor Gamepad",
+    "RSInput Gamepad",
+}
+skip = ("Motion", "Touch", "Headset", "mapped", "Mouse", "Keyboard")
+pref = "rsinput-gamepad"
+
+preferred = None
+fallback = None
+for path in list_devices():
+    try:
+        dev = InputDevice(path)
+    except OSError:
+        continue
+    name = dev.name or ""
+    ok = name in names or (
+        "Gamepad" in name and "AYN" in name and not any(s in name for s in skip)
+    )
+    if not ok:
+        dev.close()
+        continue
+    phys = (dev.phys or "").lower()
+    if pref in phys and preferred is None:
+        preferred = dev
+    elif fallback is None:
+        fallback = dev
+    else:
+        dev.close()
+
+dev = preferred or fallback
+if dev is None:
+    sys.exit(1)
+print(dev.path)
+print(dev.name or "?")
+PY
+}
+
+apply_sticks() {
+  local target="$1"
+  local lines event name
+  lines="$(find_event_node)" || die "No AYN/rsinput gamepad found in /dev/input"
+  event="$(printf '%s\n' "$lines" | sed -n '1p')"
+  name="$(printf '%s\n' "$lines" | sed -n '2p')"
+  export FIXPAD_EVENT="$event"
+  export FIXPAD_TARGET="$target"
+  export FIXPAD_STOCK="$DEFAULT_STOCK"
+
+  log "Gamepad: $name ($event)"
+  python3 - <<'PY'
+import fcntl, os, struct
+
+EVENT = os.environ["FIXPAD_EVENT"]
+TARGET = int(os.environ["FIXPAD_TARGET"])
+STOCK = int(os.environ["FIXPAD_STOCK"])
+ABSINFO = "iiiiii"
+ABSINFO_SIZE = struct.calcsize(ABSINFO)
+
+def _ioc(dir_, nr, size):
+    return (dir_ << 30) | (ord("E") << 8) | nr | (size << 16)
+
+def eviocgabs(code):
+    return _ioc(2, 0x40 + code, ABSINFO_SIZE)
+
+def eviocsabs(code):
+    return _ioc(1, 0xC0 + code, ABSINFO_SIZE)
+
+AXES = ((0, "left X "), (1, "left Y "), (3, "right X"), (4, "right Y"))
+fd = os.open(EVENT, os.O_RDWR)
+try:
+    stock_read = []
+    for code, _ in AXES:
+        buf = bytearray(ABSINFO_SIZE)
+        fcntl.ioctl(fd, eviocgabs(code), buf)
+        _v, amin, amax, *_ = struct.unpack(ABSINFO, buf)
+        stock_read.append(max(abs(amin), abs(amax)))
+    stock = max(stock_read) if stock_read else STOCK
+    print(f"Stock range read: ±{stock}")
+    print(f"Target range:     ±{TARGET}")
+    print()
+    for code, label in AXES:
+        buf = bytearray(ABSINFO_SIZE)
+        fcntl.ioctl(fd, eviocgabs(code), buf)
+        value, amin, amax, fuzz, flat, res = struct.unpack(ABSINFO, buf)
+        before = f"±{amax}" if -amin == amax else f"{amin}..{amax}"
+        fcntl.ioctl(fd, eviocsabs(code), struct.pack(ABSINFO, value, -TARGET, TARGET, fuzz, flat, res))
+        buf2 = bytearray(ABSINFO_SIZE)
+        fcntl.ioctl(fd, eviocgabs(code), buf2)
+        _, nmin, nmax, *_ = struct.unpack(ABSINFO, buf2)
+        after = f"±{nmax}" if -nmin == nmax else f"{nmin}..{nmax}"
+        print(f"  {label}  {before}  →  {after}")
+finally:
+    os.close(fd)
+PY
+}
+
+show_status() {
+  local lines event name
+  if ! lines="$(find_event_node 2>/dev/null)"; then
+    warn "No AYN/rsinput gamepad found"
+    return 1
+  fi
+  event="$(printf '%s\n' "$lines" | sed -n '1p')"
+  name="$(printf '%s\n' "$lines" | sed -n '2p')"
+  log "Gamepad: $name ($event)"
+  FIXPAD_EVENT="$event" python3 - <<'PY'
+import fcntl, os, struct
+EVENT = os.environ["FIXPAD_EVENT"]
+ABSINFO = "iiiiii"
+ABSINFO_SIZE = struct.calcsize(ABSINFO)
+def _ioc(dir_, nr, size):
+    return (dir_ << 30) | (ord("E") << 8) | nr | (size << 16)
+def eviocgabs(code):
+    return _ioc(2, 0x40 + code, ABSINFO_SIZE)
+fd = os.open(EVENT, os.O_RDWR)
+try:
+    for code, label in ((0, "left X "), (1, "left Y "), (3, "right X"), (4, "right Y")):
+        buf = bytearray(ABSINFO_SIZE)
+        fcntl.ioctl(fd, eviocgabs(code), buf)
+        _v, amin, amax, *_ = struct.unpack(ABSINFO, buf)
+        print(f"  {label}: {amin} .. {amax}")
+finally:
+    os.close(fd)
+PY
+  if systemctl --user is-active --quiet "$UNIT_NAME" 2>/dev/null; then
+    log "Daemon: active ($UNIT_NAME)"
+  elif [[ -f "$UNIT_PATH" ]]; then
+    log "Daemon: installed but not running"
+  else
+    log "Daemon: not installed (run: $(basename "$0") install)"
+  fi
+}
+
+install_daemon() {
+  local target="$1"
+  [[ -f "$DAEMON_SRC" ]] || die "Missing $DAEMON_SRC"
+  need_python_deps
+
+  if [[ "$INSTALL_BIN" != "$DAEMON_SRC" ]]; then
+    mkdir -p "$(dirname "$INSTALL_BIN")" "$USER_UNIT_DIR"
+    install -m 755 "$DAEMON_SRC" "$INSTALL_BIN"
+  fi
+
+  cat >"$UNIT_PATH" <<EOF
+[Unit]
+Description=SM8550 fixpad (stick range + Plasma idle wake)
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=!STEAMOS_SESSION
+
+[Service]
+Type=simple
+ExecStart=${INSTALL_BIN}
+Restart=on-failure
+RestartSec=2
+Environment=FIXPAD_TARGET=${target}
+
+[Install]
+WantedBy=default.target
+EOF
+
+  systemctl --user daemon-reload
+  systemctl --user enable --now "$UNIT_NAME"
+  systemctl --user restart "$UNIT_NAME"
+  log "Daemon installed: $INSTALL_BIN"
+  log "User unit: $UNIT_PATH"
+}
+
+uninstall_daemon() {
+  systemctl --user disable --now "$UNIT_NAME" 2>/dev/null || true
+  rm -f "$UNIT_PATH" "$USER_UNIT_DIR/default.target.wants/$UNIT_NAME"
+  rm -f "$INSTALL_BIN"
+  systemctl --user daemon-reload 2>/dev/null || true
+  log "Uninstalled. Sticks revert to kernel stock after reboot (or run restore)."
+}
+
+parse_target() {
+  local arg="${1:-$DEFAULT_TARGET}"
+  case "$arg" in
+    restore|stock|reset) echo "$DEFAULT_STOCK" ;;
+    *) echo "$arg" ;;
+  esac
+}
+
+validate_target() {
+  local target="$1"
+  [[ "$target" =~ ^[0-9]+$ ]] && (( target >= 64 && target <= 32767 )) || die "Invalid target: $target"
+}
+
+CMD="${1:-help}"
+ARG="${2:-}"
+
+case "$CMD" in
+  -h|--help|help)
+    usage
+    ;;
+  status)
+    show_status
+    ;;
+  uninstall)
+    uninstall_daemon
+    ;;
+  apply)
+    TARGET="$(parse_target "$ARG")"
+    validate_target "$TARGET"
+    need_python_deps
+    apply_sticks "$TARGET"
+    log "Done. Gaming Mode: run apply again after reboot if sticks feel slow."
+    ;;
+  restore)
+    need_python_deps
+    apply_sticks "$DEFAULT_STOCK"
+    log "Sticks restored to stock range."
+    ;;
+  install)
+    TARGET="$(parse_target "$ARG")"
+    validate_target "$TARGET"
+    log "Applying sticks..."
+    apply_sticks "$TARGET"
+    echo
+    log "Installing desktop daemon (idle wake + stick keepalive)..."
+    install_daemon "$TARGET"
+    echo
+    log "Desktop: daemon keeps screen awake while you use the pad."
+    log "Gaming Mode: run '$(basename "$0") apply' once per session if sticks feel slow"
+    log "             (or add hook to gamescope-session after testing)."
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+esac

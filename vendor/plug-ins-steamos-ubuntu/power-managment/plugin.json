@@ -1,6 +1,6 @@
 {
   "name": "SM8550-Power",
-  "author": "SteamOS-Ubuntu",
+  "author": "SteamOS-Ubuntu (based on Hooandee/panel-de-control)",
   "api_version": 1,
   "flags": ["root"],
   "publish": {

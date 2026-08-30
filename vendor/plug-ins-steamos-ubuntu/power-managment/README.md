@@ -1,5 +1,7 @@
 # SM8550 Power — Decky plugin
 
+Based on **[Hooandee/panel-de-control](https://github.com/Hooandee/panel-de-control)** — adapted for Qualcomm SM8550 sysfs, SteamOS-Ubuntu image delivery, and Decky plugin id **`SM8550-Power`**. Full attribution: [`CREDITS.md`](../../../CREDITS.md).
+
 Power control panel for **Qualcomm SM8550** ARM64 handhelds on SteamOS-Ubuntu:
 
 - AYN Odin 2, Thor, Portal

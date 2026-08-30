@@ -27,3 +27,12 @@ else
 fi
 
 log "Desktop pad ready (AYN only; no Steam Deck virtual pad)"
+
+if [[ -x /usr/bin/fixpad-sm8550 ]]; then
+  log "Apply AYN stick range + idle wake daemon"
+  /usr/bin/fixpad-sm8550 apply || true
+  if id steam >/dev/null 2>&1; then
+    runuser -u steam -- systemctl --user daemon-reload 2>/dev/null || true
+    runuser -u steam -- systemctl --user enable --now fixpad-sm8550.service 2>/dev/null || true
+  fi
+fi
