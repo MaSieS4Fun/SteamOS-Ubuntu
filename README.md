@@ -2,7 +2,7 @@
 
 SteamOS-like Linux Gaming OS for ARM64 handhelds (SM8550 / Adreno 740), inspired by [Universal Blue](https://github.com/ublue-os) / Bazzite, built on **Ubuntu Resolute**.
 
--
+_
 Join the community on [Discord](https://discord.gg/Mqegm7PvV9).
 
 ## Supported devices
