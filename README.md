@@ -1,6 +1,7 @@
 # SteamOS-Ubuntu
 
 SteamOS-like Linux Gaming OS for ARM64 handhelds (SM8550 / Adreno 740), inspired by [Universal Blue](https://github.com/ublue-os) / Bazzite, built on **Ubuntu Resolute**.
+Join the community on [Discord](https://discord.gg/Mqegm7PvV9).
 
 ## Supported devices
 
@@ -40,63 +41,15 @@ Default desktop user created in the image:
 - Use [balenaEtcher](https://etcher.balena.io/) or [Rufus](https://rufus.ie/es/) to flash the [SteamOS-Ubuntu](https://github.com/MaSieS4Fun/SteamOS-Ubuntu/releases) image onto the SD card.
 - Once the SD card has been flashed, insert it into your device's SD card reader.
 
-`scripts/finalize-handheld-rootfs.sh` runs at the end of every image build (boot trim, steam-mode=deck, MangoHud steam configs, steamos-manager fix).
+## Support the project
 
-## Gaming Mode / Steam Deck (on Ubuntu)
+If this helps you and you want to support development, testing, and hosting:
 
-Same idea as CachyOS handheld, on Ubuntu Resolute:
+**[Donate via PayPal](https://paypal.me/masies4fun)**
 
-1. **Bake** (builder online): `install-steam-arm-into-rootfs.sh` seeds **`steamdeck_publicbeta`**, runs `steam -steamdeck -exitsteam` until `steamui.so` + `.installed` exist.
-2. **Session**: `gamescope-session` → `launch-steam -gamepadui -steamos3 -steampal -steamdeck -noverifyfiles -noshaders` (`steam-mode=deck`).
-3. **Display**: gamescope Wayland compositor + Xwayland for Steam/CEF; DisplayManager via `GAMESCOPE_WAYLAND_DISPLAY` → `wayland: modeset`.
-4. **Overlay**: `~/.config/MangoHud/steam/{MangoHud.conf,presets.conf}` (+ system copy under `/usr/share/sm8550-steamos/MangoHud/steam/`).
+Thank you to everyone who uses, tests, reports issues, and contributes.
 
-Re-bake only Steam into a mounted rootfs:
-
-```bash
-sudo ./scripts/bake-steam-deck-into-rootfs.sh /media/odin2/STORAGE
-sudo ./scripts/finalize-handheld-rootfs.sh /media/odin2/STORAGE
-```
-
-Full image: `sudo ./create-image.sh` (vendor stack includes the Steam bake; fails the build if steamui is missing).
-
-### Desktop Mode (Plasma)
-
-Deck-like session switch (CachyOS/SteamOS model, via **greetd** — not SDDM):
-
-- Boot **always** → Gaming Mode (`steamos-force-gaming-boot` + oneshot).
-- Steam **Switch to Desktop** → `steamos-session-select plasma` → Plasma Wayland.
-- Plasma app **Return to Gaming Mode** → `steamos-session-select gamescope`.
-
-```bash
-# Apply session helpers to a mounted STORAGE without full rebuild:
-sudo ./scripts/finalize-handheld-rootfs.sh /media/odin2/STORAGE
-```
-
-Or manually copy `system_files` overlay and reboot.
-
-### Snap / browsers
-
-- Snap is purged, pinned to priority `-1`, and masked.
-- Image browser: **Brave only** (official Brave apt).
-- `apt install firefox` uses Mozilla’s `.deb` repo (configured, not preinstalled) — never a snap stub.
-
-### Controller (SDL2)
-
-Built-in `AYN Odin2 Gamepad` (rsinput) is treated as an SDL2 gamecontroller (`/etc/sdl2/qcom-gamecontrollerdb.txt` + udev). Pad→mouse helpers (`antimicro`, `input-remapper`, `xserver-xorg-input-joystick`) are excluded.
-
-## Audio
-
-`vendor/audio/` is **enabled by default**. Set `SKIP_AUDIO=1` only to skip it.
-Early-boot `aw88166` PLL/IIS retry spam on the panel is silenced by MaSi patch
-`1033-sound-aw88166-quiet-early-iis-probe` (rebuild kernel + `vendor/kernel/update.sh`).
-Audio still works; messages move to `dev_dbg` only.
-
-Install into a mounted rootfs without rebuilding the image:
-
-```bash
-sudo ./vendor/audio/scripts/install-into-rootfs.sh /media/odin2/STORAGE
-```
+---
 
 ## License
 
