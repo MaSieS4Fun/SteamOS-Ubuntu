@@ -1,9 +1,9 @@
-#Licenses
+# Licenses
 
 SteamOS-Ubuntu is a Linux distribution made up of many open-source components. Each
 component is provided under its own license.
 
-##SteamOS-Ubuntu software
+## SteamOS-Ubuntu software
 
 Original software and scripts developed by the ROCKNIX team are licensed under the terms of the [GNU GPL Version 2](https://choosealicense.com/licenses/gpl-2.0/).  The full license can be found in this project's licenses folder.
 
