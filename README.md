@@ -31,6 +31,7 @@ SteamOS-like Linux Gaming OS for ARM64 handhelds (SM8550 / Adreno 740), inspired
 Default desktop user created in the image:
 
 | user     | `steam` |
+
 | password | `steam` |
 
 # Decky Loader
