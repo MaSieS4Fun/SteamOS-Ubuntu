@@ -45,7 +45,7 @@ SteamOS-Ubuntu is a multi-device system with EFI boot, designed to be compatible
 
 # Installation:
 - First, install [ROCKNIX ABL](https://github.com/ROCKNIX/abl).
-- You can use the ABL installation [scripts from Android](https://github.com/user-attachments/files/31609601/rocknix_abl_Android_Scripts.zip)
+- You can use the ABL installation [scripts from Android](https://github.com/user-attachments/files/31857066/rocknix_abl.zip)
 . You must place the `abl_signed-SM8550.elf` ABL file inside the folder.
 - Once the ABL is installed, select your device. This will configure the device to boot Linux distributions.
 - Use [balenaEtcher](https://etcher.balena.io/) or [Rufus](https://rufus.ie/es/) to flash the [SteamOS-Ubuntu](https://github.com/MaSieS4Fun/SteamOS-Ubuntu/releases) image onto the SD card.
