@@ -407,16 +407,23 @@ stage_emukitarm() {
         "${staging}/usr/share/icons/hicolor/scalable/apps"
 
     # Payload (GUI + installer scripts). Skip caches / packaging debris.
-    rsync -a \
-        --exclude '__pycache__/' \
-        --exclude '.cache/' \
-        --exclude 'tmp.*/' \
-        --exclude '.tmp-*' \
-        --exclude 'out/' \
-        --exclude 'packaging/' \
-        --exclude '*.pyc' \
-        --exclude 'scripts/.yaba*' \
-        "${vendor}/" "${share}/"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a \
+          --exclude '__pycache__/' \
+          --exclude '.cache/' \
+          --exclude 'tmp.*/' \
+          --exclude '.tmp-*' \
+          --exclude 'out/' \
+          --exclude 'packaging/' \
+          --exclude '*.pyc' \
+          --exclude 'scripts/.yaba*' \
+          "${vendor}/" "${share}/"
+    else
+      cp -a "${vendor}/." "${share}/"
+      rm -rf "${share}/packaging" "${share}/__pycache__" "${share}/.cache" \
+        "${share}/out" "${share}/dist" 2>/dev/null || true
+      find "${share}" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+    fi
 
     chmod 0755 "${share}/emukitarm" "${share}/masiscript" \
         "${share}/emukitarm.py" "${share}/masiscript.py" \
@@ -479,9 +486,10 @@ Package: steamos-ubuntu-apps
 Version: ${PKG_STEAMOS_UBUNTU_APPS}
 Architecture: all
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
-Depends: mesa-easy-manager (>= ${PKG_MESA_EASY_MANAGER}), easy-ufs-install (>= ${PKG_EASY_UFS_INSTALL}), proton-arm-easy-manager (>= ${PKG_PROTON_ARM_EASY_MANAGER}), no-steam-games (>= ${PKG_NO_STEAM_GAMES}), gyro-desktop (>= ${PKG_GYRO_DESKTOP}), emukitarm (>= ${PKG_EMUKITARM}), masi-kernel-edge-sm8550 (>= ${PKG_MASI_KERNEL_EDGE_SM8550})
+Depends: mesa-easy-manager (>= ${PKG_MESA_EASY_MANAGER}), easy-ufs-install (>= ${PKG_EASY_UFS_INSTALL}), proton-arm-easy-manager (>= ${PKG_PROTON_ARM_EASY_MANAGER}), no-steam-games (>= ${PKG_NO_STEAM_GAMES}), gyro-desktop (>= ${PKG_GYRO_DESKTOP}), emukitarm (>= ${PKG_EMUKITARM})
+Recommends: masi-kernel-edge-sm8550 (>= ${PKG_MASI_KERNEL_EDGE_SM8550})
 Description: SteamOS-Ubuntu gaming apps + kernel updater (metapackage)
- Pulls in ARM Manager apps and the MaSi kernel updater package.
+ Pulls in ARM Manager apps (kernel updater recommended when the kbase bundle is published).
  Homepage: https://github.com/${STEAMOS_UBUNTU_GITHUB_REPO}
 EOF
 }
@@ -522,7 +530,13 @@ build_one proton-arm-easy-manager "${PKG_PROTON_ARM_EASY_MANAGER}"
 build_one no-steam-games "${PKG_NO_STEAM_GAMES}"
 build_one gyro-desktop "${PKG_GYRO_DESKTOP}"
 build_one emukitarm "${PKG_EMUKITARM}"
-build_one masi-kernel-edge-sm8550 "${PKG_MASI_KERNEL_EDGE_SM8550}"
+
+# Kernel kbase lives under vendor/kernel/output/ (gitignored) — skip on CI/apt-only builds.
+if resolve_kernel_kbase_dir >/dev/null 2>&1; then
+  build_one masi-kernel-edge-sm8550 "${PKG_MASI_KERNEL_EDGE_SM8550}"
+else
+  log "Skipping masi-kernel-edge-sm8550 (no vendor/kernel/output/*-kbase — compile locally to publish it)"
+fi
 build_one steamos-ubuntu-apps "${PKG_STEAMOS_UBUNTU_APPS}" all
 
 log "Done:"
