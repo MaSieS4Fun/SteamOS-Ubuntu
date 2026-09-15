@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=EmuKitARM
+GenericName=Emulator Installer
+Comment=Emulator installer for Snapdragon 8 Gen 2 (sm8550)
+Exec=emukitarm
+Icon=emukitarm
+Terminal=false
+Categories=System;Utility;X-ARM-Manager;
+Keywords=emulator;switch;ps1;ps2;ps3;xbox;sm8550;arm;
+StartupNotify=true

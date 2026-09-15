@@ -393,6 +393,83 @@ Description: MaSi SM8550 edge kernel (${KERNEL_VER}) — apt install/upgrade fla
 EOF
 }
 
+stage_emukitarm() {
+    local staging="$1"
+    local vendor="${ROOT_DIR}/vendor/emukitarm"
+    local share="${staging}/usr/share/emukitarm"
+
+    [[ -f "${vendor}/emukitarm.py" ]] || die "missing vendor/emukitarm"
+    [[ -f "${vendor}/scripts/megic.sh" ]] || die "missing vendor/emukitarm/scripts/megic.sh"
+
+    stage_empty "${staging}"
+    mkdir -p "${share}" "${staging}/usr/bin" \
+        "${staging}/usr/share/applications" \
+        "${staging}/usr/share/icons/hicolor/scalable/apps"
+
+    # Payload (GUI + installer scripts). Skip caches / packaging debris.
+    rsync -a \
+        --exclude '__pycache__/' \
+        --exclude '.cache/' \
+        --exclude 'tmp.*/' \
+        --exclude '.tmp-*' \
+        --exclude 'out/' \
+        --exclude 'packaging/' \
+        --exclude '*.pyc' \
+        --exclude 'scripts/.yaba*' \
+        "${vendor}/" "${share}/"
+
+    chmod 0755 "${share}/emukitarm" "${share}/masiscript" \
+        "${share}/emukitarm.py" "${share}/masiscript.py" \
+        "${share}/lib/askpass" 2>/dev/null || true
+    chmod 0755 "${share}/scripts/"*.sh 2>/dev/null || true
+    find "${share}" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+
+    cat > "${staging}/usr/bin/emukitarm" <<'EOF'
+#!/bin/bash
+export EMUKITARM_ROOT=/usr/share/emukitarm
+cd "${EMUKITARM_ROOT}"
+exec bash "${EMUKITARM_ROOT}/emukitarm" "$@"
+EOF
+    chmod 0755 "${staging}/usr/bin/emukitarm"
+
+    # Compatibility alias for older docs / habits.
+    cat > "${staging}/usr/bin/masiscript" <<'EOF'
+#!/bin/bash
+exec emukitarm "$@"
+EOF
+    chmod 0755 "${staging}/usr/bin/masiscript"
+
+    if [[ -f "${vendor}/packaging/emukitarm.svg" ]]; then
+        install -m 0644 "${vendor}/packaging/emukitarm.svg" \
+            "${staging}/usr/share/icons/hicolor/scalable/apps/emukitarm.svg"
+    fi
+
+    cat > "${staging}/usr/share/applications/emukitarm.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=EmuKitARM
+GenericName=Emulator Installer
+Comment=Emulator installer for Snapdragon 8 Gen 2 (sm8550)
+Exec=emukitarm
+Icon=emukitarm
+Terminal=false
+Categories=System;Utility;X-ARM-Manager;
+Keywords=emulator;switch;ps1;ps2;ps3;xbox;sm8550;arm;
+StartupNotify=true
+EOF
+
+    write_control "${staging}" <<EOF
+Package: emukitarm
+Version: ${PKG_EMUKITARM}
+Architecture: arm64
+Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
+Depends: python3, python3-gi, gir1.2-gtk-3.0, bash, sudo, policykit-1 | pkexec
+Description: EmuKitARM — emulator installer GUI for SM8550 / SteamOS-Ubuntu
+ GTK installer for DuckStation, Dolphin, RPCS3, Switch (Eden), and more.
+ Homepage: https://github.com/${STEAMOS_UBUNTU_GITHUB_REPO}
+EOF
+}
+
 stage_steamos_ubuntu_apps() {
     local staging="$1"
 
@@ -402,7 +479,7 @@ Package: steamos-ubuntu-apps
 Version: ${PKG_STEAMOS_UBUNTU_APPS}
 Architecture: all
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
-Depends: mesa-easy-manager (>= ${PKG_MESA_EASY_MANAGER}), easy-ufs-install (>= ${PKG_EASY_UFS_INSTALL}), proton-arm-easy-manager (>= ${PKG_PROTON_ARM_EASY_MANAGER}), no-steam-games (>= ${PKG_NO_STEAM_GAMES}), gyro-desktop (>= ${PKG_GYRO_DESKTOP}), masi-kernel-edge-sm8550 (>= ${PKG_MASI_KERNEL_EDGE_SM8550})
+Depends: mesa-easy-manager (>= ${PKG_MESA_EASY_MANAGER}), easy-ufs-install (>= ${PKG_EASY_UFS_INSTALL}), proton-arm-easy-manager (>= ${PKG_PROTON_ARM_EASY_MANAGER}), no-steam-games (>= ${PKG_NO_STEAM_GAMES}), gyro-desktop (>= ${PKG_GYRO_DESKTOP}), emukitarm (>= ${PKG_EMUKITARM}), masi-kernel-edge-sm8550 (>= ${PKG_MASI_KERNEL_EDGE_SM8550})
 Description: SteamOS-Ubuntu gaming apps + kernel updater (metapackage)
  Pulls in ARM Manager apps and the MaSi kernel updater package.
  Homepage: https://github.com/${STEAMOS_UBUNTU_GITHUB_REPO}
@@ -420,6 +497,7 @@ build_one() {
     proton-arm-easy-manager) fn=stage_proton_arm_easy_manager ;;
     no-steam-games) fn=stage_no_steam_games ;;
     gyro-desktop) fn=stage_gyro_desktop ;;
+    emukitarm) fn=stage_emukitarm ;;
     masi-kernel-edge-sm8550) fn=stage_masi_kernel ;;
     steamos-ubuntu-apps) fn=stage_steamos_ubuntu_apps ;;
     *) die "unknown package: ${name}" ;;
@@ -443,6 +521,7 @@ build_one easy-ufs-install "${PKG_EASY_UFS_INSTALL}"
 build_one proton-arm-easy-manager "${PKG_PROTON_ARM_EASY_MANAGER}"
 build_one no-steam-games "${PKG_NO_STEAM_GAMES}"
 build_one gyro-desktop "${PKG_GYRO_DESKTOP}"
+build_one emukitarm "${PKG_EMUKITARM}"
 build_one masi-kernel-edge-sm8550 "${PKG_MASI_KERNEL_EDGE_SM8550}"
 build_one steamos-ubuntu-apps "${PKG_STEAMOS_UBUNTU_APPS}" all
 

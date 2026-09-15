@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="EmuKitARM">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1b6b4a"/>
+      <stop offset="100%" stop-color="#0d3d2c"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#g)"/>
+  <rect x="28" y="36" width="72" height="48" rx="10" fill="#e8f5ee" opacity="0.95"/>
+  <rect x="40" y="48" width="48" height="24" rx="4" fill="#0d3d2c"/>
+  <circle cx="48" cy="60" r="4" fill="#7dcea0"/>
+  <circle cx="80" cy="60" r="4" fill="#7dcea0"/>
+  <path d="M44 92h40v6H44z" fill="#e8f5ee" opacity="0.85"/>
+  <text x="64" y="118" text-anchor="middle" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="700" fill="#e8f5ee">ARM</text>
+</svg>

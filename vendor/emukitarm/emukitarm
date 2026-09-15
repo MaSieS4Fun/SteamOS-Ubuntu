@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# EmuKitARM launcher (GUI). Usage: ./emukitarm
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+chmod +x "$ROOT/scripts/"*.sh 2>/dev/null || true
+
+if ! python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk" 2>/dev/null; then
+  echo "Missing PyGObject/GTK3. Installing gir1.2-gtk-3.0 python3-gi..."
+  if command -v pkexec >/dev/null 2>&1; then
+    pkexec apt-get install -y python3-gi gir1.2-gtk-3.0
+  else
+    sudo apt-get install -y python3-gi gir1.2-gtk-3.0
+  fi
+fi
+
+exec python3 "$ROOT/emukitarm.py" "$@"
