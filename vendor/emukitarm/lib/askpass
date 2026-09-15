@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# SUDO_ASKPASS helper for MasiScript.
+# SUDO_ASKPASS helper for EmuKitARM.
 # Reads the session password from $XDG_RUNTIME_DIR (never from the project tree).
 set -euo pipefail
-PASS_FILE="${MASI_SUDO_PASS_FILE:-${XDG_RUNTIME_DIR:-/tmp}/masiscript/sudo_pass}"
+PASS_FILE="${MASI_SUDO_PASS_FILE:-${XDG_RUNTIME_DIR:-/tmp}/emukitarm/sudo_pass}"
 if [[ -r "$PASS_FILE" ]]; then
   cat "$PASS_FILE"
   exit 0
 fi
 # Fallback interactive prompt if launched without a cached session password.
 if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] && command -v zenity >/dev/null 2>&1; then
-  zenity --password --title="MasiScript" 2>/dev/null || true
+  zenity --password --title="EmuKitARM" 2>/dev/null || true
   exit 0
 fi
 exit 1

@@ -3,6 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
+# Best-effort for git checkouts; packaged /usr/share installs are already +x.
 chmod +x "$ROOT/scripts/"*.sh 2>/dev/null || true
 
 if ! python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk" 2>/dev/null; then

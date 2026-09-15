@@ -605,7 +605,13 @@ def main() -> int:
     if not (SCRIPTS / "duckstation.sh").exists():
         print("scripts/duckstation.sh not found", file=sys.stderr)
         return 1
-    ASKPASS.chmod(ASKPASS.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    # Packaged installs live under /usr/share (not writable); deb already marks askpass +x.
+    try:
+        ASKPASS.chmod(ASKPASS.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    except PermissionError:
+        if not os.access(ASKPASS, os.X_OK):
+            print(f"askpass is not executable: {ASKPASS}", file=sys.stderr)
+            return 1
     win = EmuKitArmApp()
     win.show_all()
     Gtk.main()
