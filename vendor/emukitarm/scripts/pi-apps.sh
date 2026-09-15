@@ -25,7 +25,12 @@ PI_APPS_DIR="${MASI_PI_APPS_DIR:-$HOME/pi-apps}"
 SOURCES_LIST="/etc/apt/sources.list"
 SOURCES_BAK="/etc/apt/sources.list.masi-bak"
 UBUNTU_SOURCES="/etc/apt/sources.list.d/ubuntu.sources"
-UBUNTU_SOURCES_DISABLED="/etc/apt/sources.list.d/ubuntu.sources.masi-disabled"
+# Must NOT live under sources.list.d — apt warns on unknown extensions there.
+APT_BACKUP_DIR="/var/lib/emukitarm/apt"
+UBUNTU_SOURCES_DISABLED="${APT_BACKUP_DIR}/ubuntu.sources"
+# Legacy path left by older installs (triggers apt "invalid filename extension").
+UBUNTU_SOURCES_DISABLED_LEGACY="/etc/apt/sources.list.d/ubuntu.sources.masi-disabled"
+APT_QUIET_CONF="/etc/apt/apt.conf.d/90emukitarm-pi-apps-sources"
 
 BUILD_DEPS=(
   git curl wget ca-certificates
@@ -49,11 +54,57 @@ ubuntu_codename() {
   printf '%s\n' "$codename"
 }
 
+ensure_hostname_resolves() {
+  # Empty /etc/hosts → "sudo: unable to resolve host …"
+  local host
+  host="$(hostname 2>/dev/null || true)"
+  [[ -n "$host" ]] || return 0
+  masi_ensure_sudo
+  if [[ ! -s /etc/hosts ]] || ! grep -qE "[[:space:]]${host}([[:space:]]|$)" /etc/hosts 2>/dev/null; then
+    masi_log "Fixing /etc/hosts for hostname ${host}..."
+    masi_sudo tee /etc/hosts >/dev/null <<EOF
+127.0.0.1 localhost
+127.0.1.1 ${host}
+
+# The following lines are desirable for IPv6 capable hosts
+::1     ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+EOF
+  fi
+}
+
+ensure_apt_quiet_for_classic_sources() {
+  # Classic .list sources (needed by Pi-Apps) make apt notice "modernize-sources".
+  masi_ensure_sudo
+  masi_sudo tee "$APT_QUIET_CONF" >/dev/null <<'EOF'
+# EmuKitARM / Pi-Apps: keep classic sources.list; silence format notices on apt update.
+APT::Get::Update::SourceListWarnings "false";
+EOF
+}
+
+migrate_legacy_disabled_ubuntu_sources() {
+  masi_ensure_sudo
+  masi_sudo mkdir -p "$APT_BACKUP_DIR"
+  if [[ -f "$UBUNTU_SOURCES_DISABLED_LEGACY" ]]; then
+    masi_log "Moving legacy ${UBUNTU_SOURCES_DISABLED_LEGACY} out of sources.list.d..."
+    if [[ ! -f "$UBUNTU_SOURCES_DISABLED" ]]; then
+      masi_sudo mv -f "$UBUNTU_SOURCES_DISABLED_LEGACY" "$UBUNTU_SOURCES_DISABLED"
+    else
+      masi_sudo rm -f "$UBUNTU_SOURCES_DISABLED_LEGACY"
+    fi
+  fi
+}
+
 ubuntu_ports_mirror() {
   # aarch64 image uses ports.ubuntu.com (see ubuntu.sources).
   if [[ -f "$UBUNTU_SOURCES" ]] && grep -q 'ports.ubuntu.com' "$UBUNTU_SOURCES"; then
     echo "http://ports.ubuntu.com/ubuntu-ports"
   elif [[ -f "$UBUNTU_SOURCES_DISABLED" ]] && grep -q 'ports.ubuntu.com' "$UBUNTU_SOURCES_DISABLED"; then
+    echo "http://ports.ubuntu.com/ubuntu-ports"
+  elif [[ -f "$UBUNTU_SOURCES_DISABLED_LEGACY" ]] && grep -q 'ports.ubuntu.com' "$UBUNTU_SOURCES_DISABLED_LEGACY"; then
     echo "http://ports.ubuntu.com/ubuntu-ports"
   else
     echo "http://ports.ubuntu.com/ubuntu-ports"
@@ -67,19 +118,23 @@ ensure_classic_sources_list() {
 
   masi_log "Ensuring classic ${SOURCES_LIST} for Pi-Apps (codename=${codename})..."
   masi_ensure_sudo
+  ensure_hostname_resolves
+  migrate_legacy_disabled_ubuntu_sources
+  masi_sudo mkdir -p "$APT_BACKUP_DIR"
 
   if [[ ! -f "$SOURCES_BAK" ]]; then
     masi_sudo cp -a "$SOURCES_LIST" "$SOURCES_BAK"
   fi
 
   # Disable deb822 ubuntu.sources so apt does not see duplicate targets.
+  # Keep the backup outside sources.list.d (apt warns on unknown extensions there).
   if [[ -f "$UBUNTU_SOURCES" ]]; then
-    masi_log "Disabling deb822 ${UBUNTU_SOURCES} (restored on Pi-Apps uninstall)..."
+    masi_log "Disabling deb822 ${UBUNTU_SOURCES} → ${UBUNTU_SOURCES_DISABLED}"
     masi_sudo mv -f "$UBUNTU_SOURCES" "$UBUNTU_SOURCES_DISABLED"
   fi
 
   masi_sudo tee "$SOURCES_LIST" >/dev/null <<EOF
-# Written by MasiScript for Pi-Apps compatibility.
+# Written by EmuKitARM for Pi-Apps compatibility.
 # Mirrors the previous deb822 ubuntu.sources entries for ${codename}.
 # Original stub saved as ${SOURCES_BAK}; ubuntu.sources → ${UBUNTU_SOURCES_DISABLED}
 
@@ -89,11 +144,13 @@ deb ${mirror} ${codename}-security main restricted universe multiverse
 deb ${mirror} ${codename}-backports main restricted universe multiverse
 EOF
 
+  ensure_apt_quiet_for_classic_sources
   masi_sudo apt-get update -y
 }
 
 restore_apt_sources() {
   masi_ensure_sudo
+  migrate_legacy_disabled_ubuntu_sources
   if [[ -f "$UBUNTU_SOURCES_DISABLED" && ! -f "$UBUNTU_SOURCES" ]]; then
     masi_log "Restoring ${UBUNTU_SOURCES}"
     masi_sudo mv -f "$UBUNTU_SOURCES_DISABLED" "$UBUNTU_SOURCES"
@@ -102,6 +159,7 @@ restore_apt_sources() {
     masi_log "Restoring original ${SOURCES_LIST}"
     masi_sudo mv -f "$SOURCES_BAK" "$SOURCES_LIST"
   fi
+  masi_sudo rm -f "$APT_QUIET_CONF"
   masi_sudo apt-get update -y || true
 }
 
@@ -357,7 +415,7 @@ do_install() {
 [EmuKitARM] WARNING — Pi-Apps
 - OS ID SteamOS-Ubuntu is treated as Ubuntu 26.04 Resolute.
 - /etc/apt/sources.list was rewritten to classic deb lines for Pi-Apps.
-- deb822 ubuntu.sources was disabled (restored on uninstall).
+- deb822 ubuntu.sources was moved to /var/lib/emukitarm/apt/ (restored on uninstall).
 - ~/pi-apps is kept so you can manage apps later.
 
 EOF
