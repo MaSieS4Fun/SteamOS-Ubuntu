@@ -30,9 +30,66 @@ BUILD_DEPS=(
 
 GTK_DEPS=(libgtk-3-dev)
 
+# Adreno/Turnip has no VDPAU. libvdpau falls back to "nvidia" and prints a
+# missing libvdpau_nvidia.so warning (red herring — do NOT install NVIDIA libs).
+# Qt FFmpeg multimedia triggers that probe; GStreamer avoids it. Wayland often
+# segfaults shadPS4 Qt UIs — default to xcb (overridable via QT_QPA_PLATFORM).
+install_qtlauncher_wrapper() {
+  local prefix="$1"
+  local libexec_dir="${prefix}/libexec/shadps4"
+  local real_bin="${libexec_dir}/${BIN_NAME}"
+  local wrap_bin="${prefix}/bin/${BIN_NAME}"
+  local desktop="${prefix}/share/applications/net.shadps4.shadps4-qtlauncher.desktop"
+  local manifest="${MASI_MANIFESTS}/${APP_ID}.txt"
+
+  masi_sudo mkdir -p "$libexec_dir"
+
+  if [[ -x "$wrap_bin" && ! -L "$wrap_bin" ]]; then
+    # Fresh cmake --install drops a real ELF in bin/; relocate it once.
+    if file -b "$wrap_bin" 2>/dev/null | grep -qi 'elf'; then
+      masi_sudo mv -f "$wrap_bin" "$real_bin"
+    elif [[ ! -x "$real_bin" ]]; then
+      masi_die "Expected ELF at ${wrap_bin} after cmake --install"
+    fi
+  elif [[ -x "$wrap_bin" && -L "$wrap_bin" && ! -x "$real_bin" ]]; then
+    masi_die "Wrapper present but missing real binary: ${real_bin}"
+  fi
+
+  [[ -x "$real_bin" ]] || masi_die "Missing real ${APP_NAME} binary at ${real_bin}"
+
+  masi_sudo tee "$wrap_bin" >/dev/null <<EOF
+#!/usr/bin/env bash
+# EmuKitARM wrapper for ${BIN_NAME} (Adreno — no NVIDIA VDPAU).
+set -euo pipefail
+export QT_MEDIA_BACKEND="\${QT_MEDIA_BACKEND:-gstreamer}"
+export QT_QPA_PLATFORM="\${QT_QPA_PLATFORM:-xcb}"
+exec "${real_bin}" "\$@"
+EOF
+  masi_sudo chmod 755 "$wrap_bin"
+
+  if [[ -f "$desktop" ]]; then
+    masi_sudo sed -i \
+      "s|^Exec=.*|Exec=env QT_MEDIA_BACKEND=gstreamer QT_QPA_PLATFORM=xcb ${wrap_bin}|" \
+      "$desktop"
+  fi
+
+  if [[ -f "$manifest" ]]; then
+    grep -qxF "$real_bin" "$manifest" || echo "$real_bin" >>"$manifest"
+    grep -qxF "$wrap_bin" "$manifest" || echo "$wrap_bin" >>"$manifest"
+  fi
+
+  masi_log "Installed Adreno-safe launcher wrapper → ${wrap_bin}"
+  masi_log "  real binary: ${real_bin}"
+  masi_log "  QT_MEDIA_BACKEND=gstreamer (skips FFmpeg→VDPAU nvidia fallback spam)"
+  masi_log "  QT_QPA_PLATFORM=xcb (avoids Wayland Qt segfaults)"
+}
+
 do_uninstall() {
   masi_log "=== Uninstalling ${APP_NAME} ==="
   masi_uninstall_from_manifest "$APP_ID"
+  # Leftovers if an older install moved the ELF outside the manifest.
+  masi_sudo rm -f "${PREFIX}/libexec/shadps4/${BIN_NAME}" 2>/dev/null || true
+  masi_sudo rmdir "${PREFIX}/libexec/shadps4" 2>/dev/null || true
   masi_refresh_desktop_and_icons "${PREFIX}/share"
   masi_log "=== ${APP_NAME} removed ==="
   masi_log "Note: emulator cores under ~/shadps4 are left in place (use ShadPS4 uninstall)."
@@ -87,15 +144,22 @@ do_install() {
     || masi_die "Build did not produce ${build_dir}/${BIN_NAME}"
 
   MASI_PREFIX="$PREFIX" masi_cmake_install "$build_dir" "$APP_ID"
+  install_qtlauncher_wrapper "$PREFIX"
   masi_refresh_desktop_and_icons "${PREFIX}/share"
 
   masi_log "=== ${APP_NAME} installed successfully ==="
-  masi_log "Binary:  ${PREFIX}/bin/${BIN_NAME}"
+  masi_log "Binary:  ${PREFIX}/bin/${BIN_NAME} (wrapper)"
   masi_log "Desktop: ${PREFIX}/share/applications/net.shadps4.shadps4-qtlauncher.desktop"
   masi_shadps4_qtlauncher_warning
 }
 
 case "${1:-}" in
   --uninstall|uninstall|remove) do_uninstall ;;
+  --fix-wrapper|fix-wrapper)
+    masi_require_aarch64
+    masi_ensure_sudo
+    install_qtlauncher_wrapper "$PREFIX"
+    masi_refresh_desktop_and_icons "${PREFIX}/share"
+    ;;
   *) do_install ;;
 esac
