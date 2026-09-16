@@ -25,7 +25,7 @@ BUILD_DEPS=(
   clang lld llvm-21-dev
   libasound2-dev libpulse-dev libopenal-dev libglew-dev zlib1g-dev libedit-dev
   libvulkan-dev libudev-dev libevdev-dev libsdl3-dev libjack-dev libsndio-dev
-  libcurl4-openssl-dev libxkbcommon-dev libx11-dev
+  libcurl4-openssl-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-dev
   qt6-base-dev qt6-base-private-dev qt6-multimedia-dev qt6-svg-dev
   libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev
   libopencv-dev
