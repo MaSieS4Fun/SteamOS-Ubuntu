@@ -6,7 +6,7 @@ SteamOS-like Linux Gaming OS for ARM64 handhelds (SM8550 / Adreno 740), inspired
 ---
 ### Join the community on [Discord](https://discord.gg/Mqegm7PvV9).
 ### 1- You can check a configuration and showcase [video](https://www.youtube.com/watch?v=2_gH20kpyiE).
-### 2- You can check a Emulators Manage [video](https://www.youtube.com/watch?v=0DyW8Z9A2qc)
+### 2- You can check a Emulators Manage [video](https://www.youtube.com/watch?v=0DyW8Z9A2qc).
 ---
 > [!WARNING]
 > - AI has been used in this project.
