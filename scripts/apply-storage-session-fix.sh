@@ -23,6 +23,25 @@ install -D -m 0755 "${SRC}/usr/local/bin/steamos-greetd-session" \
 install -D -m 0755 \
   "${SRC}/usr/libexec/steamos-ubuntu/launch-steam" \
   "${ROOTFS}/usr/libexec/steamos-ubuntu/launch-steam"
+install -D -m 0755 \
+  "${SRC}/usr/libexec/steamos-ubuntu/seed-deck-oobe" \
+  "${ROOTFS}/usr/libexec/steamos-ubuntu/seed-deck-oobe"
+install -D -m 0755 \
+  "${SRC}/usr/libexec/steamos-ubuntu/steamos-backlight-access" \
+  "${ROOTFS}/usr/libexec/steamos-ubuntu/steamos-backlight-access"
+install -D -m 0644 \
+  "${SRC}/etc/udev/rules.d/99-steamos-backlight.rules" \
+  "${ROOTFS}/etc/udev/rules.d/99-steamos-backlight.rules"
+install -D -m 0644 \
+  "${SRC}/etc/systemd/system/steamos-backlight-access.service" \
+  "${ROOTFS}/etc/systemd/system/steamos-backlight-access.service"
+mkdir -p "${ROOTFS}/etc/systemd/system/multi-user.target.wants"
+ln -sfn /etc/systemd/system/steamos-backlight-access.service \
+  "${ROOTFS}/etc/systemd/system/multi-user.target.wants/steamos-backlight-access.service"
+install -D -m 0440 \
+  "${SRC}/etc/sudoers.d/99-steam-backlight" \
+  "${ROOTFS}/etc/sudoers.d/99-steam-backlight"
+chown root:root "${ROOTFS}/etc/sudoers.d/99-steam-backlight"
 
 log "OOBE: steamos-update (apply→0 + CompletedOOBE) + polkit helpers + sudoers"
 install -D -m 0755 \
@@ -47,7 +66,14 @@ install -D -m 0755 \
 install -D -m 0755 \
   "${SRC}/usr/bin/steamos-polkit-helpers/jupiter-dock-updater" \
   "${ROOTFS}/usr/bin/steamos-polkit-helpers/jupiter-dock-updater"
-rm -f "${ROOTFS}/var/lib/steamos-ubuntu/oobe-os-update-acked" 2>/dev/null || true
+rm -f "${ROOTFS}/var/lib/steamos-ubuntu/oobe-os-update-acked" \
+  "${ROOTFS}/home/steam/.local/share/steamos-ubuntu/oobe-os-update-acked" 2>/dev/null || true
+if [[ -d "${ROOTFS}/home/steam" && -x "${SRC}/usr/libexec/steamos-ubuntu/seed-deck-oobe" ]]; then
+  log "Seed ForceOOBE (language / timezone / Wi-Fi before login)"
+  "${SRC}/usr/libexec/steamos-ubuntu/seed-deck-oobe" \
+    --steam-home "${ROOTFS}/home/steam" \
+    --marker "${ROOTFS}/var/lib/steamos-ubuntu/oobe-os-update-acked" || true
+fi
 install -D -m 0644 \
   "${SRC}/etc/polkit-1/rules.d/50-steamos-oobe-helpers.rules" \
   "${ROOTFS}/etc/polkit-1/rules.d/50-steamos-oobe-helpers.rules"

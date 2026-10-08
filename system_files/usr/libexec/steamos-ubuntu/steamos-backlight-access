@@ -1,0 +1,13 @@
+#!/bin/sh
+# Steam Game Mode writes /sys/class/backlight/*/brightness itself.
+# The node is root:root 0644, so the slider moves and the panel does not.
+# Qualcomm SM8550 exposes the panel as /sys/class/backlight/backlight.
+set -u
+for dir in /sys/class/backlight/*; do
+  [ -d "$dir" ] || continue
+  for node in brightness bl_power; do
+    [ -e "$dir/$node" ] || continue
+    chmod 0666 "$dir/$node" 2>/dev/null || true
+  done
+done
+exit 0

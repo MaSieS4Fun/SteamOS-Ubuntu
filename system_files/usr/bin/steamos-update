@@ -13,8 +13,10 @@
 # This image has no RAUC/atomupd OS payloads:
 #   - check always exits 7 (no update). Exit 0 falsely advertises an update;
 #     Steam then Apply → "system restart required" → can brick the session.
-#   - APPLY exits 0 only during OOBE (stamp CompletedOOBE + nudge Steam).
-#     After login, APPLY exits 7 so we never claim a reboot-needed OS update.
+#   - APPLY exits 0 only during OOBE (stamp CompletedOOBE, drop ForceOOBE,
+#     restart Steam). After login, APPLY exits 7 so we never claim a
+#     reboot-needed OS update. ForceOOBE is what shows language/Wi-Fi on
+#     this image; clearing it is what reveals the login screen.
 #
 # Note: check→7 is correct (up to date). Residual SteamUI "Updater check
 # error: 40" came from BootStrapperInhibitAll → Client eresult Blocked; fixed
@@ -126,10 +128,13 @@ if [[ "$oobe" -eq 0 ]]; then
   exit 7
 fi
 
-mkdir -p /var/lib/steamos-ubuntu 2>/dev/null || true
+mkdir -p /var/lib/steamos-ubuntu \
+  "${STEAM_HOME}/.local/share/steamos-ubuntu" 2>/dev/null || true
+HOME_MARKER="${STEAM_HOME}/.local/share/steamos-ubuntu/oobe-os-update-acked"
 mark_oobe_complete "$REG_STEAM" "$REG_LOCAL"
-if [[ ! -f "$MARKER" ]]; then
+if [[ ! -f "$MARKER" && ! -f "$HOME_MARKER" ]]; then
   touch "$MARKER" 2>/dev/null || true
+  touch "$HOME_MARKER" 2>/dev/null || true
   (
     sleep 2
     pkill -f '/home/steam/\.local/share/Steam/steamrtarm64/steam' 2>/dev/null \

@@ -1,0 +1,2 @@
+# SteamOS-Ubuntu: steam may open the panel backlight at session start.
+steam ALL=(root) NOPASSWD: /usr/libexec/steamos-ubuntu/steamos-backlight-access

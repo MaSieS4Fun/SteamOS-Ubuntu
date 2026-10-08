@@ -41,6 +41,13 @@ fi
 
 mapfile -t ALL < <(printf '%s\n' "${ALL[@]}" | awk 'NF && !seen[$0]++')
 
+# Ubuntu libgbm-dev is apt-pinned (-1) so vendor Turnip is not overwritten.
+# Install epoch-99 placeholders first, otherwise libsdl2-dev cannot be solved.
+if [[ -x "${ROOT_DIR}/scripts/install-host-mesa-dev-dummies.sh" ]]; then
+  log "Installing vendor Mesa -dev placeholders (libgbm-dev / EGL / GLES)…"
+  "${ROOT_DIR}/scripts/install-host-mesa-dev-dummies.sh" /
+fi
+
 log "Updating apt indices…"
 apt-get update -y
 

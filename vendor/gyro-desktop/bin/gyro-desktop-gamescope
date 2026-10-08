@@ -15,14 +15,23 @@ IMU_MAP="${IP_SRC}/capability_maps.d/imu_generic.yaml"
 log() { printf '==> [gyro-desktop-gamescope] %s\n' "$*" >&2; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+# Unplugging the USB-C dock can wedge the audio DSP. A blocking
+# systemctl restart then never returns, so "Return to Gaming Mode" stays
+# on Plasma. Bound every service call.
+svc() {
+  timeout 8 systemctl "$@" || log "systemctl $* did not finish"
+}
+
 [[ "${EUID}" -eq 0 ]] || die "run as root"
 
 log "Start motion stack for Steam IMU"
-systemctl start masi-qcom-qrtr.service 2>/dev/null || true
-systemctl start masi-qcom-sensors.service 2>/dev/null || true
-systemctl enable qcom-motion.service 2>/dev/null || true
-systemctl restart qcom-motion.service 2>/dev/null || systemctl start qcom-motion.service || true
-sleep 1
+svc start masi-qcom-qrtr.service
+svc start masi-qcom-sensors.service
+svc enable qcom-motion.service
+# qcom-motion shares the ADSP with audio. Restarting an already healthy
+# service during a display-session transition needlessly tears that stack
+# down and can aggravate SM8550 dock-unplug timeouts. `start` is idempotent.
+svc start qcom-motion.service
 
 if [[ -f "$IMU_YAML" ]]; then
   log "Install gamepad+IMU composite → deck-uhid"
@@ -36,9 +45,9 @@ if [[ -f "$IMU_YAML" ]]; then
   fi
 fi
 
-systemctl enable inputplumber.service 2>/dev/null || true
-systemctl restart inputplumber.service 2>/dev/null || systemctl start inputplumber.service || true
-sleep 1
+svc enable inputplumber.service
+svc try-restart inputplumber.service
+svc start inputplumber.service
 
 if [[ -x /usr/bin/fixpad-sm8550 ]]; then
   log "Apply AYN stick range (±740)"

@@ -1,6 +1,10 @@
 # CREDITS — Upstream sources
 
-> **SteamOS-Ubuntu:** project-wide attribution in [`../../CREDITS.md`](../../CREDITS.md). This file details the kernel tree only.
+> **SteamOS-ARM-SM8550** ships this kernel tree from
+> **[SteamOS-Ubuntu](https://github.com/MaSieS4Fun/SteamOS-Ubuntu)** /
+> [MaSi-OS Kernel Updater](https://github.com/MaSieS4Fun/MaSi-OS-Kernel-Updater).
+> Project-wide attribution: [`../../CREDITS.md`](../../CREDITS.md).
+> This file details the kernel tree only.
 
 **MaSi-OS Kernel Updater** —
 [github.com/MaSieS4Fun/MaSi-OS-Kernel-Updater](https://github.com/MaSieS4Fun/MaSi-OS-Kernel-Updater)
@@ -29,7 +33,9 @@ respective projects (kernel = GPL-2.0; build scripts here = MIT — see `LICENSE
 | Source | URL | What we use |
 |--------|-----|-------------|
 | **ROCKNIX distribution** | https://github.com/ROCKNIX/distribution | Multi-device ABL `KERNEL` concept; UFS/`ROCKNIX` partition install pattern; deep-suspend kernel patches (see below); AYANEO Pocket DTS copyrights / board ids. |
-| **ROCKNIX PR #2952 (deep suspend)** | https://github.com/ROCKNIX/distribution/pull/2952 | Vendored as `patches/masi/1006`–`1013` (UFS hibern8/relink, QMP RX LineCfg, IPCC wake, Thor tsens). Authors include **jaewun**. Re-fetch: `scripts/fetch-rocknix-suspend-patches.py`. |
+| **ROCKNIX PR #2954 (deep suspend)** | https://github.com/ROCKNIX/distribution/pull/2954 | Same stack as #2952, rebased; IPCC self-wake; TSENS uplow skip SoC-wide; `mem_sleep_default=deep` (no s2idle fallback). |
+| **xiaodoudou UFS 1009/1011** | https://github.com/xiaodoudou/distribution | Vendored as `1045` (hibern8-enter recover) and `1046` (hold clk-gating across system PM). Authors **gh123man**. |
+| **drewano/armada PR #2** | https://github.com/drewano/armada/pull/2 | Userspace systemd-sleep hook: USB/MMC runtime PM auto + BT rfkill so SM8550 leaves always-on/CX votes in sleep. |
 | **ROCKNIX-ABL** | https://github.com/ROCKNIX/abl | Boot model selection (“Set the Device”) that picks DTB chain index; dual Linux/Android boot. We do **not** ship the ABL binary; we document and package for it. |
 | **Reference SM8550 image** | (community SM8550 image; local extract) | Reference DTB chain layout / slot sizes in `reference/dtb-chain` and `device-tree/vendored/` (14-slot order matching ABL indices). |
 

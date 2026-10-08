@@ -110,6 +110,8 @@ libzstd-dev
 libffi-dev
 libxml2-dev
 libglvnd-dev
+# Mesa -dev: Ubuntu packages are apt-pinned. install-host-build-deps.sh
+# installs epoch-99 vendor placeholders first so libsdl2-dev can resolve.
 libegl1-mesa-dev
 libgles2-mesa-dev
 libgbm-dev

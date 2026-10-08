@@ -39,16 +39,16 @@ steam_shutdown() {
 apply_desktop_pad() {
   if [[ -x /usr/bin/gyro-desktop-plasma ]]; then
     log "Desktop pad: gamepad-only + optional DSU state"
-    sudo -n /usr/bin/gyro-desktop-plasma 2>/dev/null || \
-      /usr/bin/gyro-desktop-plasma 2>/dev/null || true
+    timeout 25 sudo -n /usr/bin/gyro-desktop-plasma 2>/dev/null || \
+      timeout 25 /usr/bin/gyro-desktop-plasma 2>/dev/null || true
   fi
 }
 
 apply_gaming_pad() {
   if [[ -x /usr/bin/gyro-desktop-gamescope ]]; then
     log "Gaming Mode pad: deck-uhid + IMU"
-    sudo -n /usr/bin/gyro-desktop-gamescope 2>/dev/null || \
-      /usr/bin/gyro-desktop-gamescope 2>/dev/null || true
+    timeout 25 sudo -n /usr/bin/gyro-desktop-gamescope 2>/dev/null || \
+      timeout 25 /usr/bin/gyro-desktop-gamescope 2>/dev/null || true
   fi
 }
 
@@ -109,7 +109,8 @@ case "${1:-}" in
   gamescope|gamepadui|steam)
     log "Switch to Gaming Mode: selecting Gamescope"
     set_session gamescope-session.desktop
-    apply_gaming_pad
+    # gamescope-session applies the pad after Plasma has logged out. Doing it
+    # here too restarts shared input/motion services during the transition.
 
     if command -v qdbus6 >/dev/null 2>&1; then
         qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout 2>/dev/null || true

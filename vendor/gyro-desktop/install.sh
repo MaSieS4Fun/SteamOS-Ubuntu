@@ -79,11 +79,11 @@ if [[ -f "${REPO}/system_files/usr/bin/steamos-desktop-gamescope" ]]; then
     "$(path /usr/bin)/steamos-desktop-gamescope"
 fi
 if [[ -f "${REPO}/vendor/Desktop_gamemode/steambp.desktop" ]]; then
-  install -d "$(path /usr/local/share/applications)" "$(path /home/steam/Desktop)"
+  install -d "$(path /usr/local/share/applications)"
   install -m 0644 "${REPO}/vendor/Desktop_gamemode/steambp.desktop" \
     "$(path /usr/local/share/applications)/steambp.desktop"
-  install -m 0755 "${REPO}/vendor/Desktop_gamemode/steambp.desktop" \
-    "$(path /home/steam/Desktop)/steambp.desktop" 2>/dev/null || true
+  rm -f "$(path /home/steam/Desktop)/steambp.desktop" \
+    "$(path /etc/skel/Desktop)/steambp.desktop" 2>/dev/null || true
 fi
 
 install -m 0644 "${ROOT}/packaging/xdg/autostart/gyro-desktop-plasma.desktop" \

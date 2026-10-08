@@ -13,10 +13,10 @@ Rocknix-ABL / LinuxLoader picks `chain[device_index]`.
 | 5–6 | Retroid Pocket 6 | SM8550 | kbuild `qcs8550-retroidpocket-rp6.dtb` |
 | 7 | KONKR Pocket FIT | SM8650 | reference blob (wrong SoC) |
 | 8 | AYANEO Pocket S2 | SM8650 | reference blob (wrong SoC) |
-| 9 | AYANEO Pocket ACE | SM8550 | kbuild `qcs8550-ayaneo-pocketace.dtb` |
-| 10 | AYANEO Pocket DMG | SM8550 | kbuild `qcs8550-ayaneo-pocketdmg.dtb` |
-| 11 | AYANEO Pocket DS | SM8550 | kbuild `qcs8550-ayaneo-pocketds.dtb` |
-| 12 | AYANEO Pocket EVO | SM8550 | kbuild `qcs8550-ayaneo-pocketevo.dtb` |
+| 9 | AYANEO Pocket ACE | SM8550 | reference `slot-09.dtb` |
+| 10 | AYANEO Pocket DMG | SM8550 | reference `slot-10.dtb` |
+| 11 | AYANEO Pocket DS | SM8550 | reference `slot-11.dtb` |
+| 12 | AYANEO Pocket EVO | SM8550 | reference `slot-12.dtb` |
 | 13 | AYANEO Pocket S 2K | SM8550 | kbuild `qcs8550-ayaneo-pockets1.dtb` |
 
 ## AYANEO SM8550 bring-up notes

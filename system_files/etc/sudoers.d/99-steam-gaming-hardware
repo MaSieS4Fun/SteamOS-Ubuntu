@@ -1,0 +1,4 @@
+# Narrow hardware permissions required by the unprivileged Gaming Mode session.
+steam ALL=(root) NOPASSWD: /usr/libexec/steamos-ubuntu/steamos-backlight-access
+steam ALL=(root) NOPASSWD: /usr/libexec/steamos-ubuntu/gamescope-device-quirks apply
+steam ALL=(root) NOPASSWD: /usr/libexec/steamos-ubuntu/gamescope-device-quirks clear

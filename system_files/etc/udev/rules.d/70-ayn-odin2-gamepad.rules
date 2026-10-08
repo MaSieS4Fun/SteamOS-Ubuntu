@@ -1,37 +1,82 @@
-# AYN Odin 2 / Thor built-in pad (kernel rsinput) → joystick for SDL2, never mouse.
-# Permissions for Steam / gamescope / Plasma without root.
-# InputPlumber deck-uhid also creates Valve Steam Controller HID (28de) via uhid.
+# AYN built-in pad stays a joystick for SDL / InputPlumber.
+# The compositor (Plasma libinput, gamescope, Xorg) must never turn it into
+# a pointer or a keyboard: stick noise becomes a wandering cursor and a
+# held button becomes a stuck click or key.
+# InputPlumber's deck-uhid node (28de) is separate and still needs hidraw access.
 
 KERNEL=="uhid", MODE="0660", GROUP="input", TAG+="uaccess"
 
-# Steam / gamescope must open InputPlumber's virtual Deck HID
 KERNEL=="hidraw*", ATTRS{idVendor}=="28de", MODE="0660", GROUP="input", TAG+="uaccess"
 KERNEL=="hidraw*", ATTRS{idVendor}=="28DE", MODE="0660", GROUP="input", TAG+="uaccess"
 
-# Native Xbox-layout pad from rsinput
-SUBSYSTEM=="input", ATTRS{name}=="AYN Odin2 Gamepad", \
-  ENV{ID_INPUT_JOYSTICK}="1", ENV{ID_INPUT_MOUSE}="", ENV{ID_INPUT_TOUCHPAD}="", \
-  MODE="0660", GROUP="input", TAG+="uaccess"
-SUBSYSTEM=="input", ATTRS{name}=="AYN Thor Gamepad", \
-  ENV{ID_INPUT_JOYSTICK}="1", ENV{ID_INPUT_MOUSE}="", ENV{ID_INPUT_TOUCHPAD}="", \
-  MODE="0660", GROUP="input", TAG+="uaccess"
-SUBSYSTEM=="input", ATTRS{name}=="RSInput Gamepad", \
-  ENV{ID_INPUT_JOYSTICK}="1", ENV{ID_INPUT_MOUSE}="", \
+# input_id tags ABS sticks as a mouse and 60-persistent-input.rules then
+# creates by-path/*-event-mouse. That link is what makes the cursor orbit.
+# Clear it here (this file sorts after 60-*) and point libinput away.
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="AYN Odin*Gamepad|AYN Thor*Gamepad|RSInput Gamepad", \
+  ENV{ID_INPUT_JOYSTICK}="1", \
+  ENV{ID_INPUT_MOUSE}="", \
+  ENV{ID_INPUT_TOUCHPAD}="", \
+  ENV{ID_INPUT_TABLET}="", \
+  ENV{ID_INPUT_KEYBOARD}="", \
+  ENV{ID_INPUT_KEY}="", \
+  ENV{LIBINPUT_IGNORE_DEVICE}="1", \
+  MODE="0660", GROUP="input", TAG+="uaccess", \
+  SYMLINK-="input/by-path/$env{ID_PATH}-event-mouse", \
+  SYMLINK+="input/by-path/$env{ID_PATH}-event-joystick"
+
+# Paddle GPIOs are buttons, not keys.
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="gpio-keys-paddles", \
+  ENV{ID_INPUT_JOYSTICK}="1", \
+  ENV{ID_INPUT_KEYBOARD}="", \
+  ENV{ID_INPUT_KEY}="", \
+  ENV{ID_INPUT_MOUSE}="", \
+  ENV{LIBINPUT_IGNORE_DEVICE}="1", \
   MODE="0660", GROUP="input", TAG+="uaccess"
 
-# Motion / touch / headset nodes must not look like joysticks (or mice)
-SUBSYSTEM=="input", ATTRS{name}=="AYN Odin2 Gamepad Motion Sensors", \
-  ENV{ID_INPUT_ACCELEROMETER}="1", ENV{ID_INPUT_JOYSTICK}="", ENV{ID_INPUT_MOUSE}="", MODE="0660", GROUP="input"
-SUBSYSTEM=="input", ATTRS{name}=="AYN Thor Gamepad Motion Sensors", \
-  ENV{ID_INPUT_ACCELEROMETER}="1", ENV{ID_INPUT_JOYSTICK}="", ENV{ID_INPUT_MOUSE}="", MODE="0660", GROUP="input"
-SUBSYSTEM=="input", ATTRS{name}=="AYN Odin2 Motion", \
-  ENV{ID_INPUT_ACCELEROMETER}="1", ENV{ID_INPUT_JOYSTICK}="", MODE="0660", GROUP="input"
-SUBSYSTEM=="input", ATTRS{name}=="AYN Thor Motion", \
-  ENV{ID_INPUT_ACCELEROMETER}="1", ENV{ID_INPUT_JOYSTICK}="", MODE="0660", GROUP="input"
-SUBSYSTEM=="input", ATTRS{name}=="AYN Odin2 Gamepad Touchpad", \
-  ENV{ID_INPUT_JOYSTICK}="", ENV{ID_INPUT_MOUSE}="", MODE="0660", GROUP="input"
-SUBSYSTEM=="input", ATTRS{name}=="AYN Odin2 Gamepad Headset Jack", \
-  ENV{ID_INPUT_JOYSTICK}="", MODE="0660", GROUP="input"
+# Motion / touch nodes of the pad are not pointers.
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="AYN*Motion*|AYN*Touchpad*|RSInput*Motion*", \
+  ENV{ID_INPUT_JOYSTICK}="", \
+  ENV{ID_INPUT_MOUSE}="", \
+  ENV{ID_INPUT_KEYBOARD}="", \
+  ENV{ID_INPUT_KEY}="", \
+  ENV{LIBINPUT_IGNORE_DEVICE}="1", \
+  MODE="0660", GROUP="input"
 
-# js* nodes
+# Codec jack nodes advertise KEY_MEDIA / KEY_VOICECOMMAND. Plug noise holds
+# those keys and opens windows. Audio jack detect uses the sound card, not
+# this keyboard. Name on device: "AYN-Odin2 Headset Jack" (the old
+# "AYN Odin2 Gamepad Headset Jack" match never fired).
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="*Headset Jack", \
+  ENV{ID_INPUT_KEYBOARD}="", \
+  ENV{ID_INPUT_KEY}="", \
+  ENV{ID_INPUT_MOUSE}="", \
+  ENV{LIBINPUT_IGNORE_DEVICE}="1", \
+  MODE="0660", GROUP="input"
+
+# Dock keyboards: interface 00 is the real keyboard (no relative axes).
+# Interface 01 of 045e:0730 (and the same pattern on other docks) advertises
+# every KEY plus REL_HWHEEL. libinput splits that into a virtual mouse and a
+# keyboard, so garbage reports move the pointer, click, and hold Enter/Meta
+# until windows open. Seen on both Plasma/Xorg and gamescope.
+# ID_USB_INTERFACE_NUM is on the event node; capabilities/rel is on its
+# input parent — only one ATTRS key, so they are allowed to differ.
+SUBSYSTEM=="input", KERNEL=="event*", \
+  ENV{ID_USB_INTERFACE_NUM}=="?*", \
+  ENV{ID_USB_INTERFACE_NUM}!="00", \
+  ENV{ID_INPUT_KEYBOARD}=="1", \
+  ATTRS{capabilities/rel}!="0", \
+  ENV{LIBINPUT_IGNORE_DEVICE}="1", \
+  ENV{ID_INPUT_KEYBOARD}="", \
+  ENV{ID_INPUT_KEY}="", \
+  ENV{ID_INPUT_MOUSE}=""
+
+# Same device, explicit, in case the rel bitmask is reported as empty.
+SUBSYSTEM=="input", KERNEL=="event*", \
+  ENV{ID_VENDOR_ID}=="045e", ENV{ID_MODEL_ID}=="0730", \
+  ENV{ID_USB_INTERFACE_NUM}=="01", \
+  ENV{LIBINPUT_IGNORE_DEVICE}="1", \
+  ENV{ID_INPUT_KEYBOARD}="", \
+  ENV{ID_INPUT_KEY}="", \
+  ENV{ID_INPUT_MOUSE}=""
+
 KERNEL=="js[0-9]*", SUBSYSTEM=="input", MODE="0660", GROUP="input", TAG+="uaccess"

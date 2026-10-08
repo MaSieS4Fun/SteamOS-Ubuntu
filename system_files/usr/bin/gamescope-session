@@ -35,7 +35,16 @@ echo "===== $(date -Iseconds) gamescope-session ====="
 # Ensure deck-uhid + IMU for Steam (desktop may have left DSU/motion off)
 if [[ -x /usr/bin/gyro-desktop-gamescope ]]; then
   session_debug "gyro-desktop-gamescope: applying Gaming Mode pad"
-  sudo -n /usr/bin/gyro-desktop-gamescope 2>&1 || /usr/bin/gyro-desktop-gamescope 2>&1 || true
+  timeout 25 sudo -n /usr/bin/gyro-desktop-gamescope 2>&1 || \
+    timeout 25 /usr/bin/gyro-desktop-gamescope 2>&1 || \
+    session_debug "gyro-desktop-gamescope skipped"
+fi
+
+# Panel backlight is root:root 0644. Steam's brightness slider writes sysfs.
+if [[ -x /usr/libexec/steamos-ubuntu/steamos-backlight-access ]]; then
+  sudo -n /usr/libexec/steamos-ubuntu/steamos-backlight-access 2>/dev/null \
+    || /usr/libexec/steamos-ubuntu/steamos-backlight-access 2>/dev/null \
+    || true
 fi
 
 # AYN rsinput stick range (±1408 → ±740) — baked fix, no user action
@@ -85,6 +94,7 @@ export SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0
 export SDL_VIDEO_X11_DGAMOUSE=0
 export STEAM_USE_SYSTEM_HIBERNATION=0
 export SDL_GAMECONTROLLERCONFIG_FILE="${SDL_GAMECONTROLLERCONFIG_FILE:-/etc/sdl2/qcom-gamecontrollerdb.txt}"
+export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD="${SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD:-1}"
 export QT_QPA_PLATFORM=xcb
 export QT_IM_MODULE=steam
 export GTK_IM_MODULE=Steam
@@ -170,8 +180,28 @@ elif [[ -r "/sys/class/drm/card0-${OUTPUT}/modes" ]]; then
   fi
 fi
 session_debug "internal output=$OUTPUT panel=${PANEL_W}x${PANEL_H} (HDMI/DP ignored)"
-# Optional override only for debugging: GAMESCOPE_FORCE_ORIENTATION=left|right|normal
-FORCE_ORIENTATION="${GAMESCOPE_FORCE_ORIENTATION:-}"
+
+# Device-scoped quirks: Thor touch mapping and RP6 panel orientation.
+# Explicit environment overrides still take precedence.
+QUIRKS=/usr/libexec/steamos-ubuntu/gamescope-device-quirks
+QUIRK_ORIENTATION=""
+QUIRK_OUTPUT=""
+if [[ -x "$QUIRKS" ]]; then
+  eval "$(sudo -n "$QUIRKS" apply 2>>"$LOG" || true)"
+  trap 'sudo -n "$QUIRKS" clear >/dev/null 2>&1 || true' EXIT
+fi
+if [[ -z "${GAMESCOPE_OUTPUT:-}" && -n "$QUIRK_OUTPUT" ]]; then
+  OUTPUT="$QUIRK_OUTPUT"
+  if [[ -r "/sys/class/drm/card0-${OUTPUT}/modes" ]]; then
+    mode="$(head -1 "/sys/class/drm/card0-${OUTPUT}/modes" || true)"
+    if [[ "$mode" =~ ^([0-9]+)x([0-9]+) ]]; then
+      PANEL_W="${BASH_REMATCH[1]}"
+      PANEL_H="${BASH_REMATCH[2]}"
+    fi
+  fi
+fi
+# Optional override: GAMESCOPE_FORCE_ORIENTATION=left|right|normal|upsidedown
+FORCE_ORIENTATION="${GAMESCOPE_FORCE_ORIENTATION:-${QUIRK_ORIENTATION}}"
 if [[ "$PANEL_H" -gt "$PANEL_W" ]]; then
   W="${GAMESCOPE_WIDTH:-$PANEL_H}"
   H="${GAMESCOPE_HEIGHT:-$PANEL_W}"

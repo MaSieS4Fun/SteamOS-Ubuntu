@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# SteamUI treats oobe_completed as already true on any OS that is not a
+# Steam Deck factory image, so Gamepad UI opens on the account login.
+# ForceOOBE (registry) turns on OOBE test mode: language → timezone → Wi-Fi
+# → phantom OS update. steamos-update clears ForceOOBE when that update
+# step asks Steam to restart; the next start is the login screen.
+#
+#   seed-deck-oobe [--steam-home DIR] [--marker FILE]
+set -euo pipefail
+
+STEAM_HOME="${HOME:-/home/steam}"
+MARKER=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --steam-home)
+      STEAM_HOME="${2:-}"
+      shift 2
+      ;;
+    --marker)
+      MARKER="${2:-}"
+      shift 2
+      ;;
+    *)
+      echo "usage: seed-deck-oobe [--steam-home DIR] [--marker FILE]" >&2
+      exit 2
+      ;;
+  esac
+done
+
+[[ -n "$STEAM_HOME" && -d "$STEAM_HOME" ]] || exit 0
+
+LOGINUSERS="${STEAM_HOME}/.local/share/Steam/config/loginusers.vdf"
+HOME_MARKER="${STEAM_HOME}/.local/share/steamos-ubuntu/oobe-os-update-acked"
+if [[ -z "$MARKER" ]]; then
+  MARKER=/var/lib/steamos-ubuntu/oobe-os-update-acked
+fi
+
+if [[ -f "$LOGINUSERS" ]] && grep -qs '"AccountName"' "$LOGINUSERS"; then
+  exit 0
+fi
+if [[ -f "$MARKER" || -f "$HOME_MARKER" ]]; then
+  exit 0
+fi
+
+REG_STEAM="${STEAM_HOME}/.steam/registry.vdf"
+REG_LOCAL="${STEAM_HOME}/.local/share/Steam/registry.vdf"
+
+python3 - "$REG_STEAM" "$REG_LOCAL" <<'PY'
+import pathlib, re, sys
+
+WANT = (("ForceOOBE", "1"),)
+DROP = ("CompletedOOBE", "CompletedOOBEStage1", "ForceOOBEStage2")
+
+def upsert(path: pathlib.Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    if '"Steam"' not in text:
+        lines = "\n".join(f'\t\t\t\t\t"{k}"\t\t"{v}"' for k, v in WANT)
+        text = (
+            '"Registry"\n{\n\t"HKCU"\n\t{\n\t\t"Software"\n\t\t{\n'
+            '\t\t\t"Valve"\n\t\t\t{\n\t\t\t\t"Steam"\n\t\t\t\t{\n'
+            f"{lines}\n"
+            "\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n}\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        return
+
+    for k in DROP:
+        text = re.sub(r'^[ \t]*"' + re.escape(k) + r'"[ \t]*"[^"]*"[ \t]*\n', "", text, flags=re.M)
+
+    m = re.search(
+        r'("HKCU"\s*\{.*?^[ \t]*"Steam"\s*\n[ \t]*\{)',
+        text,
+        flags=re.M | re.S,
+    )
+    if not m:
+        m = re.search(r'(^[ \t]*"Steam"\s*\n[ \t]*\{)', text, flags=re.M)
+    if not m:
+        path.write_text(text, encoding="utf-8")
+        return
+
+    head_end = m.end()
+    i = head_end
+    depth = 1
+    while i < len(text) and depth:
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+        i += 1
+    block = text[head_end : i - 1]
+    indent = "\t\t\t\t\t"
+    child = re.search(r'\n([ \t]+)"', "\n" + block)
+    if child:
+        indent = child.group(1)
+
+    for k, v in WANT:
+        pat = r'^[ \t]*"' + re.escape(k) + r'"[ \t]*"[^"]*"'
+        if re.search(pat, block, flags=re.M):
+            block = re.sub(pat, f'"{k}"\t\t"{v}"', block, count=1, flags=re.M)
+            block = re.sub(
+                r'^"' + re.escape(k) + r'"\t\t"' + re.escape(v) + r'"',
+                f'{indent}"{k}"\t\t"{v}"',
+                block,
+                count=1,
+                flags=re.M,
+            )
+        else:
+            block = f'\n{indent}"{k}"\t\t"{v}"' + (block if block.startswith("\n") else "\n" + block)
+
+    text = text[:head_end] + block + text[i - 1 :]
+    path.write_text(text, encoding="utf-8")
+
+for p in sys.argv[1:]:
+    upsert(pathlib.Path(p))
+PY
+
+if [[ "${EUID}" -eq 0 ]]; then
+  chown --reference="$STEAM_HOME" "$REG_STEAM" "$REG_LOCAL" 2>/dev/null || true
+fi

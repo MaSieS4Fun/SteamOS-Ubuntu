@@ -123,5 +123,12 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
     2>/dev/null || dbus-update-activation-environment --all 2>/dev/null || true
 fi
 
+# Non-Deck OS: SteamUI defaults oobe_completed=true and skips the welcome.
+# ForceOOBE restores language → timezone → Wi-Fi. Cleared by steamos-update
+# when the phantom update step restarts Steam (then the login screen).
+if [[ -x /usr/libexec/steamos-ubuntu/seed-deck-oobe ]]; then
+  /usr/libexec/steamos-ubuntu/seed-deck-oobe --steam-home "${HOME}" || true
+fi
+
 cd "${steam_arm_dir}"
 exec "${steam_arm}" "$@"

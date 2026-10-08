@@ -1,0 +1,8 @@
+bootsize = 0xc000000
+pagesize = 0x800
+kerneladdr = 0x10008000
+ramdiskaddr = 0x16000000
+secondaddr = 0x0
+tagsaddr = 0x10000100
+name = 
+cmdline = clk_ignore_unused pd_ignore_unused quiet loglevel=0 systemd.show_status=0 systemd.log_level=err rw rootwait root=UUID=397ea061-1b9e-4428-8874-a86b82a9efae masi.ufsroot=PARTLABEL=STORAGE rootfstype=ext4 errors=remount-ro pcie_aspm=off mem_sleep_default=deep ufshcd_core.uic_cmd_timeout=3000

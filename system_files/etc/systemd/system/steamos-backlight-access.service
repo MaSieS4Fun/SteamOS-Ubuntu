@@ -1,0 +1,13 @@
+[Unit]
+Description=Allow Gaming Mode to change panel brightness
+DefaultDependencies=no
+After=systemd-udevd.service
+Before=greetd.service display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/steamos-ubuntu/steamos-backlight-access
+
+[Install]
+WantedBy=multi-user.target

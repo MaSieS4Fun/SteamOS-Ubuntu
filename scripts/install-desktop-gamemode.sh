@@ -3,7 +3,7 @@
 # Run after Steam is present (steambp.desktop icon path lives under Steam).
 #
 # Does NOT modify vendor files — copies them as-is:
-#   steambp.desktop          → ~/Desktop/ and /usr/local/share/applications/
+#   steambp.desktop          → /usr/local/share/applications/ (not the Desktop)
 #   steamos-session-select   → /usr/bin/steamos-session-select
 #
 # Usage:
@@ -38,18 +38,15 @@ path() {
   fi
 }
 
-STEAM_UID="$(awk -F: '$1=="steam"{print $3; exit}' "$(path /etc/passwd)" 2>/dev/null || echo 1000)"
-STEAM_GID="$(awk -F: '$1=="steam"{print $4; exit}' "$(path /etc/passwd)" 2>/dev/null || echo 1000)"
 DESKTOP_DIR="$(path /home/steam/Desktop)"
 APPS_DIR="$(path /usr/local/share/applications)"
 SESSION_BIN="$(path /usr/bin/steamos-session-select)"
 
 install -d -m 0755 "$DESKTOP_DIR" "$APPS_DIR" "$(dirname "$SESSION_BIN")"
 
-log "Install steambp.desktop → ${DESKTOP_DIR}/ and ${APPS_DIR}/"
-install -m 0755 "${VENDOR}/steambp.desktop" "${DESKTOP_DIR}/steambp.desktop"
+log "Install steambp.desktop → ${APPS_DIR}/ (no Desktop icon)"
 install -m 0644 "${VENDOR}/steambp.desktop" "${APPS_DIR}/steambp.desktop"
-chown "${STEAM_UID}:${STEAM_GID}" "${DESKTOP_DIR}/steambp.desktop" 2>/dev/null || true
+rm -f "${DESKTOP_DIR}/steambp.desktop" "$(path /etc/skel/Desktop)/steambp.desktop" 2>/dev/null || true
 
 log "Install steamos-session-select → ${SESSION_BIN}"
 install -m 0755 "${VENDOR}/steamos-session-select" "$SESSION_BIN"
@@ -62,6 +59,6 @@ if [[ -d "${ROOT_DIR}/system_files/usr/bin" ]]; then
 fi
 
 log "Done"
-log "  Desktop icon: ${DESKTOP_DIR}/steambp.desktop"
 log "  Applications: ${APPS_DIR}/steambp.desktop"
+log "  Desktop icon: removed"
 log "  Session select: ${SESSION_BIN}"

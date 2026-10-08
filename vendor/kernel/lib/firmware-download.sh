@@ -120,6 +120,19 @@ _firmware_stage_copy() {
         ln -sfn "../ayn/odin2/adsp_dtb.mbn" "${ayaneo}/adsp_dtb.mbn"
         echo "  + qcom/sm8550/ayaneo/{adsp,adsp_dtb}.mbn -> ayn/odin2" >&2
     fi
+    # Reference AYANEO DTBs (before the chain rewrite) request adsp.mdt.
+    if [[ -e "${ayaneo}" ]]; then
+        local ayaneo_dir
+        ayaneo_dir="$(readlink -f "${ayaneo}" 2>/dev/null || true)"
+        if [[ -d "${ayaneo_dir}" && -f "${ayaneo_dir}/adsp.mbn" && ! -e "${ayaneo_dir}/adsp.mdt" ]]; then
+            ln -sfn adsp.mbn "${ayaneo_dir}/adsp.mdt"
+            echo "  + ayaneo/adsp.mdt -> adsp.mbn" >&2
+        fi
+        if [[ -d "${ayaneo_dir}" && -f "${ayaneo_dir}/adsp_dtb.mbn" && ! -e "${ayaneo_dir}/adsp_dtb.mdt" ]]; then
+            ln -sfn adsp_dtb.mbn "${ayaneo_dir}/adsp_dtb.mdt"
+            echo "  + ayaneo/adsp_dtb.mdt -> adsp_dtb.mbn" >&2
+        fi
+    fi
 
     # Odin 2 Mini reference DTB (slot-03 reference) asks for qcom/sm8550/a740_zap.mbn;
     # Armbian/MaSi only ship ayn/ (and sheng/). Without this alias Turnip fails

@@ -90,6 +90,24 @@ install -d "${DEBS_DST}"
 find "${DEBS_DST}" -maxdepth 1 -name '*.deb' -delete 2>/dev/null || true
 cp -a "${src_debs[@]}" "${DEBS_DST}/"
 
+# Already-built kernel debs depend on gawk. This image has mawk, which
+# provides awk, and gawk is not in the rootfs package lists.
+relax_kernel_awk() {
+    local deb="$1" depends tmp
+    depends="$(dpkg-deb -f "$deb" Depends 2>/dev/null || true)"
+    [[ "$depends" == *", gawk,"* && "$depends" != *"gawk | mawk"* ]] || return 0
+    log "Kernel package will accept mawk (gawk is not in this image)"
+    tmp="$(mktemp -d)"
+    dpkg-deb -R "$deb" "$tmp"
+    sed -i 's/, gawk,/, gawk | mawk,/' "$tmp/DEBIAN/control"
+    dpkg-deb --root-owner-group -b "$tmp" "$deb" >/dev/null
+    rm -rf "$tmp"
+}
+for deb in "${DEBS_DST}"/masi-kernel-edge-sm8550_*.deb; do
+    [[ -f "$deb" ]] || continue
+    relax_kernel_awk "$deb"
+done
+
 staged=( "${DEBS_DST}"/*.deb )
 ((${#staged[@]})) || die "copy to ${DEBS_DST} failed (expected ${#src_debs[@]} files)"
 
@@ -101,6 +119,7 @@ for pkg in \
     proton-arm-easy-manager \
     no-steam-games \
     gyro-desktop \
+    emukitarm \
     masi-kernel-edge-sm8550 \
     steamos-ubuntu-apps
 do
@@ -109,7 +128,7 @@ do
 done
 shopt -u nullglob
 
-((${#ordered[@]} == 7)) || die "expected 7 debs, got ${#ordered[@]}"
+((${#ordered[@]} == 8)) || die "expected 8 debs, got ${#ordered[@]}"
 
 log "Installing MaSi packages via apt (registers origin for future apt upgrade)…"
 
@@ -130,12 +149,12 @@ fi
 log "Installed via apt:"
 if [[ "${LIVE}" -eq 1 ]]; then
     dpkg -l mesa-easy-manager easy-ufs-install proton-arm-easy-manager \
-        no-steam-games gyro-desktop masi-kernel-edge-sm8550 steamos-ubuntu-apps \
+        no-steam-games gyro-desktop emukitarm masi-kernel-edge-sm8550 steamos-ubuntu-apps \
         2>/dev/null | tail -n +2 || true
 else
     chroot "${ROOTFS}" dpkg -l \
         mesa-easy-manager easy-ufs-install proton-arm-easy-manager \
-        no-steam-games gyro-desktop masi-kernel-edge-sm8550 steamos-ubuntu-apps \
+        no-steam-games gyro-desktop emukitarm masi-kernel-edge-sm8550 steamos-ubuntu-apps \
         2>/dev/null | tail -n +2 || true
 fi
 

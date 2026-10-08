@@ -23,6 +23,7 @@ cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
 
 # Names Ubuntu still Depends on after stock Mesa is gone.
+# -dev placeholders: libsdl2-dev Depends: libgbm-dev, which is apt-pinned to -1.
 DUMMIES=(
   libegl-mesa0
   libglx-mesa0
@@ -32,6 +33,9 @@ DUMMIES=(
   mesa-vulkan-drivers
   mesa-va-drivers
   mesa-vdpau-drivers
+  libgbm-dev
+  libegl1-mesa-dev
+  libgles2-mesa-dev
 )
 
 build_dummy() {
@@ -65,7 +69,7 @@ done
 log "Installing placeholders into ${ROOTFS} (force-depends; keep vendor .so)"
 install -d "${ROOTFS}/tmp/mesa-dummies"
 cp -a "${WORKDIR}"/*.deb "${ROOTFS}/tmp/mesa-dummies/"
-chroot "$ROOTFS" bash -c 'dpkg -i --force-depends --force-conflicts /tmp/mesa-dummies/*.deb'
+chroot "$ROOTFS" bash -c 'dpkg -i --force-depends --force-conflicts --force-overwrite /tmp/mesa-dummies/*.deb'
 rm -rf "${ROOTFS}/tmp/mesa-dummies"
 
 log "Hold placeholders so apt does not replace them with Ubuntu Mesa"

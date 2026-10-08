@@ -65,6 +65,14 @@ install -D -m 0644 \
 mkdir -p "${ROOTFS}/etc/systemd/system/multi-user.target.wants"
 ln -sfn /etc/systemd/system/steamos-panel-hold.service \
   "${ROOTFS}/etc/systemd/system/multi-user.target.wants/steamos-panel-hold.service"
+install -D -m 0755 \
+  "${SRC}/usr/libexec/steamos-ubuntu/steamos-backlight-access" \
+  "${ROOTFS}/usr/libexec/steamos-ubuntu/steamos-backlight-access"
+install -D -m 0644 \
+  "${SRC}/etc/systemd/system/steamos-backlight-access.service" \
+  "${ROOTFS}/etc/systemd/system/steamos-backlight-access.service"
+ln -sfn /etc/systemd/system/steamos-backlight-access.service \
+  "${ROOTFS}/etc/systemd/system/multi-user.target.wants/steamos-backlight-access.service"
 rm -f \
   "${ROOTFS}/usr/libexec/steamos-ubuntu/trim-panel-console" \
   "${ROOTFS}/etc/systemd/system/steamos-trim-panel-console.service" \
@@ -393,6 +401,13 @@ if [[ -d "$STEAM_HOME" ]]; then
     chown "${STEAM_UID}:${STEAM_GID}" "${STEAM_DIR}/steam.cfg" \
       "${STEAM_DIR}/steamrtarm64/steam.cfg" 2>/dev/null || true
   fi
+  # Welcome (language / timezone / Wi-Fi). Cleared when the phantom update restarts Steam.
+  if [[ -x "${SRC}/usr/libexec/steamos-ubuntu/seed-deck-oobe" ]]; then
+    "${SRC}/usr/libexec/steamos-ubuntu/seed-deck-oobe" \
+      --steam-home "$STEAM_HOME" \
+      --marker "${ROOTFS}/var/lib/steamos-ubuntu/oobe-os-update-acked" \
+      || log "WARN: could not seed Deck OOBE registry"
+  fi
   find "$STEAM_HOME" \( -name '*.pid' -o -name '*.token' -o -name '*.crash' \) -delete 2>/dev/null || true
   # Drop bake logs / caches that bloat the image
   rm -rf \
@@ -419,19 +434,15 @@ if [[ -d "$STEAM_HOME" ]]; then
     "${STEAM_HOME}/Desktop/"*kubuntu* "${STEAM_HOME}/Desktop/"*Kubuntu* \
     "${STEAM_HOME}/Desktop/org.kfocus."* "${STEAM_HOME}/Desktop/org.kubuntu."* \
     2>/dev/null || true
-  # steambp = nested gamescope via steamos-desktop-gamescope (not session-select)
-  rm -f "${STEAM_HOME}/Desktop/steambp.desktop" 2>/dev/null || true
+  # Desktop Gaming Mode stays in the app menu only (no Desktop icon).
+  rm -f "${STEAM_HOME}/Desktop/steambp.desktop" \
+    "${ROOTFS}/etc/skel/Desktop/steambp.desktop" 2>/dev/null || true
   if [[ -f "${ROOTFS}/usr/share/applications/steamos-gamemode.desktop" ]]; then
     cp -a "${ROOTFS}/usr/share/applications/steamos-gamemode.desktop" \
       "${STEAM_HOME}/Desktop/steamos-gamemode.desktop"
     chmod 0755 "${STEAM_HOME}/Desktop/steamos-gamemode.desktop" || true
   fi
   rm -f "${STEAM_HOME}/Desktop/steamos-gaming-mode.desktop" 2>/dev/null || true
-  if [[ -f "${ROOTFS}/usr/share/applications/steambp.desktop" ]]; then
-    cp -a "${ROOTFS}/usr/share/applications/steambp.desktop" \
-      "${STEAM_HOME}/Desktop/steambp.desktop"
-    chmod 0755 "${STEAM_HOME}/Desktop/steambp.desktop" || true
-  fi
   if [[ -f "${ROOTFS}/etc/xdg/powerdevilrc" ]]; then
     cp -a "${ROOTFS}/etc/xdg/powerdevilrc" "${STEAM_HOME}/.config/powerdevilrc"
   fi

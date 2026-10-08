@@ -3,6 +3,9 @@
 #include "log.hpp"
 
 #include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <string.h>
 
@@ -11,6 +14,7 @@
 #include <vector>
 
 #include <linux/input-event-codes.h>
+#include <linux/input.h>
 
 #include "wlr_begin.hpp"
 #include <wlr/interfaces/wlr_keyboard.h>
@@ -285,6 +289,8 @@ static int release_key_if_needed(void *data)
 	return 0;
 }
 
+static void osk_haptic_tick(void);
+
 static void press_key(struct wlserver_input_method *ime, uint32_t keycode, struct wlr_keyboard_modifiers *pmods = nullptr)
 {
 	struct wlr_seat *seat = ime->manager->server->wlr.seat;
@@ -308,6 +314,7 @@ static void press_key(struct wlserver_input_method *ime, uint32_t keycode, struc
 	// Note: Xwayland doesn't care about the time field of the events
 	wlr_seat_keyboard_notify_key(seat, 0, keycode, WL_KEYBOARD_KEY_STATE_PRESSED);
 	ime->held_keycode = keycode;
+	osk_haptic_tick();
 
 	wl_event_source_timer_update(ime->ime_reset_ime_keyboard_event_source, 30 /* ms */);
 }
@@ -438,6 +445,75 @@ static void perform_action(struct wlserver_input_method *ime, enum gamescope_inp
 
 	// Reset keymap when we're idle for a while
 	wl_event_source_timer_update(ime->ime_reset_ime_keyboard_event_source, 100 /* ms */);
+}
+
+// Steam's on-screen keyboard in the gamescope session commits each tap
+// through this input method. The panel motor is qcom-hv-haptics; it accepts
+// a short FF_CONSTANT (FF_SINE is rejected). Plasma's keyboard does not
+// come through here.
+static int s_osk_haptic_fd = -1;
+static int s_osk_haptic_effect = -1;
+static bool s_osk_haptic_warned = false;
+
+static int open_panel_haptics(void)
+{
+	char path[64];
+	char name[128];
+
+	for (int i = 0; i < 32; i++) {
+		snprintf(path, sizeof(path), "/dev/input/event%d", i);
+		int fd = open(path, O_RDWR | O_CLOEXEC);
+		if (fd < 0)
+			continue;
+		memset(name, 0, sizeof(name));
+		if (ioctl(fd, EVIOCGNAME(sizeof(name) - 1), name) < 0 ||
+		    strcmp(name, "qcom-hv-haptics") != 0) {
+			close(fd);
+			continue;
+		}
+		return fd;
+	}
+	return -1;
+}
+
+static void osk_haptic_tick(void)
+{
+	if (s_osk_haptic_fd < 0)
+		s_osk_haptic_fd = open_panel_haptics();
+	if (s_osk_haptic_fd < 0) {
+		if (!s_osk_haptic_warned) {
+			ime_log.errorf("panel haptics (qcom-hv-haptics) unavailable");
+			s_osk_haptic_warned = true;
+		}
+		return;
+	}
+
+	struct ff_effect effect;
+	memset(&effect, 0, sizeof(effect));
+	effect.type = FF_CONSTANT;
+	effect.id = s_osk_haptic_effect;
+	/* The PMIC arms a stop timer at upload, then waits for the boost
+	 * rail. 18 ms is gone before playback starts, so the tap is silent. */
+	effect.u.constant.level = 0x7000;
+	effect.replay.length = 120;
+	if (ioctl(s_osk_haptic_fd, EVIOCSFF, &effect) < 0) {
+		close(s_osk_haptic_fd);
+		s_osk_haptic_fd = -1;
+		s_osk_haptic_effect = -1;
+		return;
+	}
+	s_osk_haptic_effect = effect.id;
+
+	struct input_event play;
+	memset(&play, 0, sizeof(play));
+	play.type = EV_FF;
+	play.code = effect.id;
+	play.value = 1;
+	if (write(s_osk_haptic_fd, &play, sizeof(play)) != (ssize_t)sizeof(play)) {
+		close(s_osk_haptic_fd);
+		s_osk_haptic_fd = -1;
+		s_osk_haptic_effect = -1;
+	}
 }
 
 static void ime_handle_commit(struct wl_client *client, struct wl_resource *ime_resource, uint32_t serial)

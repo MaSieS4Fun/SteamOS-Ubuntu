@@ -1,0 +1,3 @@
+# Gaming Mode runs as user steam (greetd). logind uaccess is not applied
+# on that session, so Steam cannot write the panel backlight.
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/sh -c 'chmod 0666 /sys/class/backlight/%k/brightness /sys/class/backlight/%k/bl_power 2>/dev/null || true'"

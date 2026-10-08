@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Strip cont-splash / simple-framebuffer from DTBs (fixes SM8550 dispcc blue screen).
+# Strip cont-splash / simple-framebuffer from AYN and Retroid DTBs (fixes
+# SM8550 dispcc blue screen on those panels).
+# AYANEO keeps splash_region. ROCKNIX and ARMADA boot the EVO with that
+# reservation; deleting it drops the ABL logo and the panel stays black.
 # Do NOT strip mdss_mdp* — that left apps-SMMU translation faults on display SID
 # and is absent from the known-good Armbian 6.18.8 Odin 2 DTB path.
 set -euo pipefail
@@ -15,6 +18,16 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text(errors="replace")
+# ROCKNIX AYANEO reference DTBs ask for split adsp.mdt. This tree ships
+# ayaneo/adsp.mbn (odin2 alias). The name is inside KERNEL, so a kernel-only
+# drop has to match the rootfs the tester already has.
+text = text.replace("qcom/sm8550/ayaneo/adsp.mdt", "qcom/sm8550/ayaneo/adsp.mbn")
+text = text.replace("qcom/sm8550/ayaneo/adsp_dtb.mdt", "qcom/sm8550/ayaneo/adsp_dtb.mbn")
+model = ""
+mm = re.search(r'\bmodel = "([^"]+)"', text)
+if mm:
+    model = mm.group(1)
+keep_splash = model.startswith("AYANEO")
 lines = text.splitlines(True)
 out = []
 skip = 0
@@ -37,15 +50,16 @@ for line in lines:
                 depth = 0
         continue
 
-    if re.match(r"^\s*/?[\w@.-]+:\s", line) or re.match(r"^\s*/?[\w@.-]+\s*\{", line):
-        name = stripped.split(":")[0].split("{")[0].strip().lstrip("/")
-        if any(d in name for d in drop_names):
-            skip = 1
-            depth = line.count("{") - line.count("}")
-            continue
+    if not keep_splash:
+        if re.match(r"^\s*/?[\w@.-]+:\s", line) or re.match(r"^\s*/?[\w@.-]+\s*\{", line):
+            name = stripped.split(":")[0].split("{")[0].strip().lstrip("/")
+            if any(d in name for d in drop_names):
+                skip = 1
+                depth = line.count("{") - line.count("}")
+                continue
 
-    if "cont-splash" in stripped or "simple-framebuffer" in stripped:
-        continue
+        if "cont-splash" in stripped or "simple-framebuffer" in stripped:
+            continue
 
     out.append(line)
 
@@ -75,5 +89,5 @@ sanitize_dtb_dir() {
         [[ -f "${f}" ]] || continue
         sanitize_dtb_file "${f}" && n=$((n + 1))
     done
-    [[ "${n}" -gt 0 ]] && echo "  DTB sanitize: ${n} file(s) — cont-splash / simple-framebuffer removed" >&2
+    [[ "${n}" -gt 0 ]] && echo "  DTB sanitize: ${n} file(s) — AYN/RP6 splash removed, AYANEO splash kept" >&2
 }

@@ -386,7 +386,7 @@ Package: masi-kernel-edge-sm8550
 Version: ${PKG_MASI_KERNEL_EDGE_SM8550}
 Architecture: arm64
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
-Depends: abootimg, rsync, coreutils, util-linux, findutils, grep, sed, gawk, mount
+Depends: abootimg, rsync, coreutils, util-linux, findutils, grep, sed, gawk | mawk, mount
 Description: MaSi SM8550 edge kernel (${KERNEL_VER}) — apt install/upgrade flashes boot/firmware/modules
  Embeds kernel bundle; postinst repacks KERNEL for this device and installs boot/firmware/modules.
  Homepage: https://github.com/${STEAMOS_UBUNTU_GITHUB_REPO}

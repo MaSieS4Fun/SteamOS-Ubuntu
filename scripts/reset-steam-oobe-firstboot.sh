@@ -54,6 +54,8 @@ rm -f "$ROOT/var/lib/NetworkManager/"*.lease \
 
 # 4) Keep Gaming Mode on Deck OOBE flags
 mkdir -p "$ROOT/var/lib/steamos-ubuntu"
+rm -f "$ROOT/var/lib/steamos-ubuntu/oobe-os-update-acked" \
+  "$STEAM_HOME/.local/share/steamos-ubuntu/oobe-os-update-acked" 2>/dev/null || true
 echo deck >"$ROOT/var/lib/steamos-ubuntu/steam-mode"
 echo gamescope-session >"$ROOT/var/lib/steamos-ubuntu/session"
 echo "steam-mode=deck"
@@ -79,8 +81,16 @@ if grep -q '^steam:' "$ROOT/etc/passwd" 2>/dev/null; then
   fi
 fi
 
+# 6) Force the Deck welcome (this OS is not a factory Deck, so Steam skips it)
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -x "$REPO/system_files/usr/libexec/steamos-ubuntu/seed-deck-oobe" ]]; then
+  "$REPO/system_files/usr/libexec/steamos-ubuntu/seed-deck-oobe" \
+    --steam-home "$STEAM_HOME" \
+    --marker "$ROOT/var/lib/steamos-ubuntu/oobe-os-update-acked"
+fi
+
 echo
-echo "Listo. Primer inicio = sin CompletedOOBE, sin loginusers, sin Wi-Fi guardada."
+echo "Listo. Primer inicio = idioma / zona / Wi-Fi, luego login tras el reinicio del update."
 echo "Reinicia el handheld. Deberías ver idioma / red (no login)."
 echo "Nota: si pruebas en un root ya booteado, borra también conexiones NM en vivo:"
 echo "  sudo rm -f /etc/NetworkManager/system-connections/* && sudo nmcli conn reload"

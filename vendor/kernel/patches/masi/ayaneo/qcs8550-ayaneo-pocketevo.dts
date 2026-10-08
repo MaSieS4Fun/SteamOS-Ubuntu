@@ -90,6 +90,7 @@
 &display_panel {
 	compatible = "chipone,icna3512";
 
+	/* EVO wires only these two. vdd/disp/blvdd are optional in the driver. */
 	vci-supply = <&vreg_l13b_3p0>;
 	vddio-supply = <&vreg_l12b_1p8>;
 

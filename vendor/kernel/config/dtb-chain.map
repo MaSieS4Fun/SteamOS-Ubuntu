@@ -4,8 +4,12 @@
 # permutation (0=Odin2, 1=Mini, 2=Portal…) — reference uses:
 #   1=Portal, 2=Odin2, 3=Mini, 4=Thor, 5–6=RP6
 # Slot 0 = other SoC (Odin3) in reference; kept as reference blob for index alignment.
-# Slots 7–8 = SM8650 handhelds (wrong SoC for this kernel) — reference blobs.
-# Slots 9–13 = AYANEO SM8550 — kbuild from Armbian/MaSi DTS.
+# Slots 7–8 = SM8650 (KONKR Pocket FIT / AYANEO Pocket S2). Wrong SoC for this
+# kernel — keep the ROCKNIX reference blobs so ABL indices stay aligned.
+# SteamOS-ARM-Handhelds (hashtagbasit) targets that SM8650 family, not ACE/EVO.
+# Slots 9–13 = AYANEO SM8550. Use ROCKNIX reference DTBs (same Mini workaround):
+# kbuild Armbian/MaSi AYANEO DTS has caused black screen before initramfs.
+# Those reference blobs name adsp.mdt; assemble rewrites that to adsp.mbn.
 #
 # Extract reference blobs once: ./scripts/extract-reference-dtb-chain.sh
 #
@@ -20,11 +24,16 @@
 3|reference|slot-03.dtb|mini
 4|kbuild|qcs8550-ayn-thor.dtb|thor
 5|kbuild|qcs8550-retroidpocket-rp6.dtb|rp6
-6|kbuild|qcs8550-retroidpocket-rp6.dtb|rp6-alt
+6|kbuild|qcs8550-retroidpocket-rp6-topdpad.dtb|rp6-topdpad
 7|reference|slot-07.dtb|slot7-ref
 8|reference|slot-08.dtb|slot8-ref
-9|kbuild|qcs8550-ayaneo-pocketace.dtb|ace
-10|kbuild|qcs8550-ayaneo-pocketdmg.dtb|dmg
-11|kbuild|qcs8550-ayaneo-pocketds.dtb|ds
-12|kbuild|qcs8550-ayaneo-pocketevo.dtb|evo
+# ACE/DMG/DS/EVO/S 2K: reference DTB (known-good ROCKNIX panel/GPU ZAP path
+# qcom/sm8550/a740_zap.mbn). Assemble keeps splash_region on AYANEO models.
+# Revisit kbuild when a tester's DEBUG_BOOTLOG reaches /boot/masi-boot.log.
+9|reference|slot-09.dtb|ace
+10|reference|slot-10.dtb|dmg
+11|reference|slot-11.dtb|ds
+12|reference|slot-12.dtb|evo
+# S 2K reference blob only has avdd-supply. This kernel's R63419 driver
+# needs vdd/vddio/vci/vsp/vsn, which the kbuild DTS has.
 13|kbuild|qcs8550-ayaneo-pockets1.dtb|s1

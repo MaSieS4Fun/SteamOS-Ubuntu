@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Root-only, per-device input/display preparation for Gaming Mode.
+set -euo pipefail
+
+RULE=/run/udev/rules.d/98-steamos-thor-gamescope-touch.rules
+STATE=/run/steamos-ubuntu/gamescope-device-quirks
+THOR_MATRIX='0 -1 1 1 0 0'
+
+dt_has() {
+	[[ -r /proc/device-tree/compatible ]] || return 1
+	tr '\0' '\n' < /proc/device-tree/compatible | grep -qx "$1"
+}
+
+reload_input() {
+	command -v udevadm >/dev/null 2>&1 || return 0
+	udevadm control --reload >/dev/null 2>&1 || true
+	udevadm trigger --subsystem-match=input >/dev/null 2>&1 || true
+}
+
+inhibit_named() {
+	local name="$1" state="$2" dev
+	for dev in /sys/class/input/input*; do
+		[[ -r "${dev}/name" && -w "${dev}/inhibited" ]] || continue
+		[[ "$(tr -d '\n' < "${dev}/name")" == "$name" ]] || continue
+		echo "$state" > "${dev}/inhibited" || true
+	done
+}
+
+clear_quirks() {
+	local changed=0
+	if [[ -f "$RULE" ]]; then
+		rm -f "$RULE"
+		changed=1
+	fi
+	if [[ -f "$STATE" ]] && grep -q '^THOR=1' "$STATE"; then
+		inhibit_named bottom_touchscreen 0
+	fi
+	rm -f "$STATE"
+	(( changed == 0 )) || reload_input
+}
+
+apply_quirks() {
+	local orientation="" output="" thor=0 rp6=0
+	clear_quirks
+
+	if dt_has ayn,thor; then
+		thor=1
+		output=DSI-2
+		install -d -m 0755 "$(dirname "$RULE")"
+		cat > "$RULE" <<EOF
+# AYN Thor only; removed when Gaming Mode ends.
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{ID_PATH}=="platform-a90000.i2c", ENV{LIBINPUT_CALIBRATION_MATRIX}="${THOR_MATRIX}"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{ID_PATH}=="platform-98c000.i2c", ENV{LIBINPUT_CALIBRATION_MATRIX}="${THOR_MATRIX}"
+EOF
+		chmod 0644 "$RULE"
+		reload_input
+		# Gamescope only displays DSI-2; stop the dark lower panel stealing input.
+		inhibit_named bottom_touchscreen 1
+	elif dt_has retroidpocket,rp6; then
+		rp6=1
+		# ARMADA's RP6 profile uses left; the generic portrait fallback is right.
+		orientation=left
+	fi
+
+	install -d -m 0755 "$(dirname "$STATE")"
+	printf 'THOR=%s\nRP6=%s\n' "$thor" "$rp6" > "$STATE"
+	printf 'QUIRK_ORIENTATION=%q\nQUIRK_OUTPUT=%q\n' "$orientation" "$output"
+}
+
+case "${1:-}" in
+	apply) apply_quirks ;;
+	clear) clear_quirks ;;
+	*) echo "usage: $0 apply|clear" >&2; exit 2 ;;
+esac

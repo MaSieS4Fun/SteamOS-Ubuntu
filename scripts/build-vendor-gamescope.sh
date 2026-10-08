@@ -20,6 +20,16 @@ need_cmd meson
 need_cmd ninja
 need_cmd git
 
+# Valve wrap-git: stb has no meson.build; overlay lives in packagefiles/stb.
+STB_OVERLAY="${SRC}/subprojects/packagefiles/stb/meson.build"
+[[ -f "$STB_OVERLAY" ]] || die "Missing ${STB_OVERLAY} (stb wrap patch_directory)"
+# Meson skips the wrap-git clone when subprojects/stb/meson.build already
+# exists. A patch-only stub then compiles without stb_image.h.
+if [[ ! -f "${SRC}/subprojects/stb/stb_image.h" ]]; then
+  log "stb headers missing — removing stub so the wrap can clone them"
+  rm -rf "${SRC}/subprojects/stb"
+fi
+
 log "Updating gamescope submodules"
 (
   cd "$SRC"

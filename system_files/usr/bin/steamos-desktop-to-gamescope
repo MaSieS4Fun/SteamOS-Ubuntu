@@ -5,6 +5,10 @@
 # while Decky PluginLoader (x86_64 via FEX) is running. Prefer the same path as
 # a working gaming session: write the session file and leave Plasma so greetd
 # starts /usr/bin/gamescope-session.
+#
+# After a USB-C dock is unplugged, gyro-desktop-gamescope's systemctl restart
+# and Plasma's logout D-Bus call can both sit forever. Bound both, then end
+# the session ourselves so greetd can start gamescope.
 set +e
 
 LOG=/var/log/steamos-session.log
@@ -19,10 +23,26 @@ fi
 
 log "requested from Desktop (uid=$(id -u))"
 
-# Do not thrash PluginLoader here — gamescope-session will ensure :1337.
-if [[ -x /usr/bin/steamos-session-select ]]; then
-  exec /usr/bin/steamos-session-select gamescope
+if [[ -x /usr/lib/steamos/steam-set-session ]]; then
+  bash /usr/lib/steamos/steam-set-session gamescope-session.desktop \
+    >>"$LOG" 2>&1 || true
 fi
 
-log "ERROR: steamos-session-select missing"
-exit 1
+if [[ -x /usr/bin/gyro-desktop-gamescope ]]; then
+  log "pad setup (bounded)"
+  timeout 25 sudo -n /usr/bin/gyro-desktop-gamescope >>"$LOG" 2>&1 || \
+    timeout 25 /usr/bin/gyro-desktop-gamescope >>"$LOG" 2>&1 || \
+    log "pad setup skipped"
+fi
+
+log "leaving Plasma"
+if command -v qdbus6 >/dev/null 2>&1; then
+  timeout 4 qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout >>"$LOG" 2>&1 || true
+elif command -v qdbus >/dev/null 2>&1; then
+  timeout 4 qdbus org.kde.Shutdown /Shutdown org.kde.Shutdown.logout >>"$LOG" 2>&1 || true
+fi
+if [[ -n "${XDG_SESSION_ID:-}" ]]; then
+  loginctl terminate-session "$XDG_SESSION_ID" >>"$LOG" 2>&1 || true
+fi
+loginctl terminate-user "${USER:-steam}" >>"$LOG" 2>&1 || true
+exit 0

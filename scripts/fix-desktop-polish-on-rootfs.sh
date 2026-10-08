@@ -71,11 +71,8 @@ install -d "$ROOT/home/steam/Desktop" "$ROOT/home/steam/.config"
 cp -a "$ROOT/usr/share/applications/steamos-gamemode.desktop" \
   "$ROOT/home/steam/Desktop/steamos-gamemode.desktop"
 chmod 0755 "$ROOT/home/steam/Desktop/steamos-gamemode.desktop"
-if [[ -f "$ROOT/usr/share/applications/steambp.desktop" ]]; then
-  cp -a "$ROOT/usr/share/applications/steambp.desktop" \
-    "$ROOT/home/steam/Desktop/steambp.desktop"
-  chmod 0755 "$ROOT/home/steam/Desktop/steambp.desktop"
-fi
+rm -f "$ROOT/home/steam/Desktop/steambp.desktop" \
+  "$ROOT/etc/skel/Desktop/steambp.desktop" 2>/dev/null || true
 cp -a "$ROOT/etc/xdg/powerdevilrc" "$ROOT/home/steam/.config/powerdevilrc"
 chown -R "${STEAM_UID}:${STEAM_GID}" \
   "$ROOT/home/steam/Desktop" "$ROOT/home/steam/.config/powerdevilrc"
