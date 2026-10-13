@@ -66,6 +66,14 @@ jobs:
           ./scripts/generate-apt-repo.sh
           [[ -f output/apt-repo/InRelease ]] || { echo "ERROR: unsigned apt repo (missing InRelease)"; exit 1; }
           ls -la output/apt-repo/InRelease output/apt-repo/Release.gpg packaging/apt/steamos-ubuntu.gpg
+          if compgen -G "output/debs/masi-kernel-edge-sm8550_*.deb" > /dev/null; then
+            echo "KERNEL_DEB=1" >> "$GITHUB_ENV"
+          else
+            echo "KERNEL_DEB=0" >> "$GITHUB_ENV"
+            echo "No kernel deb in this build (kbase is not in git)."
+            echo "Leaving the existing gh-pages apt repo in place."
+            echo "Publish 7.2.10 from a machine that has vendor/kernel/output/*-kbase."
+          fi
 
       - name: Upload debs artifact
         uses: actions/upload-artifact@v4
@@ -74,6 +82,7 @@ jobs:
           path: output/debs/*.deb
 
       - name: Deploy apt repo to GitHub Pages
+        if: env.KERNEL_DEB == '1'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
