@@ -1,7 +1,7 @@
 From: MaSi <noreply@masi.local>
 Subject: [PATCH] tty: serial: qcom-geni: mask non-console IRQ across system suspend
 
-Armada 1006. Stops irq 190 'nobody cared' from the gamepad MCU UART.
+Stops irq 190 'nobody cared' from the gamepad MCU UART.
 
 ---
 --- a/drivers/tty/serial/qcom_geni_serial.c	2026-09-29 15:43:48.692209572 +0200

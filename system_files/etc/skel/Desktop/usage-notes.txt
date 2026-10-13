@@ -1,0 +1,61 @@
+Usage notes
+============
+
+English
+-------
+
+This system is an open system. It has been optimized for use on ARM handheld devices.
+
+There are two x86_64-to-ARM converters: BOX64 and FEXEmu. For Decky Loader to work, you must install ONE of these converters before installing Decky Loader.
+
+If you are not sure which one to install, I recommend the easiest option: BOX64 is quick to install, takes very little space, and is minimally invasive. That is enough for Decky Loader to work well.
+
+BOX64 does not affect Steam. If you use an x86_64 Proton, Steam itself installs and uses its own FEXCore. ARM Proton builds use their own FEXCore in the same way.
+
+
+Français
+--------
+
+Ce système est un système ouvert. Il a été optimisé pour être utilisé sur des appareils portables ARM.
+
+Il existe deux convertisseurs de x86_64 vers ARM : BOX64 et FEXEmu. Pour que Decky Loader fonctionne, il faut installer UN de ces convertisseurs avant d'installer Decky Loader.
+
+Si vous ne savez pas lequel installer, je conseille l'option la plus simple : BOX64 s'installe rapidement, occupe très peu de place et est peu invasif pour le système. C'est suffisant pour que Decky Loader fonctionne bien.
+
+BOX64 n'influence pas Steam. Si vous utilisez un Proton x86_64, Steam installe et utilise lui-même son propre FEXCore. De la même façon, les Proton ARM utilisent leur propre FEXCore.
+
+
+Deutsch
+-------
+
+Dieses System ist ein offenes System. Es wurde für die Nutzung auf ARM-Handhelds optimiert.
+
+Für die Umsetzung von x86_64 nach ARM gibt es zwei Möglichkeiten: BOX64 und FEXEmu. Damit Decky Loader funktioniert, muss EINER dieser Konverter installiert werden, bevor Decky Loader installiert wird.
+
+Wenn ihr nicht wisst, was ihr installieren sollt, empfehle ich die einfachste Option: BOX64 lässt sich schnell installieren, belegt sehr wenig Speicher und greift kaum in das System ein. Das reicht aus, damit Decky Loader gut funktioniert.
+
+BOX64 hat keinen Einfluss auf Steam. Wenn ein Proton x86_64 verwendet wird, installiert und nutzt Steam selbst seinen eigenen FEXCore. Ebenso verwenden die ARM-Proton-Versionen ihren eigenen FEXCore.
+
+
+Italiano
+--------
+
+Questo sistema è un sistema aperto. È stato ottimizzato per essere usato su dispositivi handheld ARM.
+
+Per la conversione da x86_64 ad ARM ci sono due opzioni: BOX64 e FEXEmu. Perché Decky Loader funzioni, è necessario installare UNO di questi convertitori prima di installare Decky Loader.
+
+Se non sapete quale installare, consiglio l'opzione più semplice: BOX64 si installa in fretta, occupa pochissimo spazio ed è poco invasivo per il sistema. È sufficiente perché Decky Loader funzioni bene.
+
+BOX64 non influisce su Steam. Se si usa un Proton x86_64, è Steam stesso a installare e usare il proprio FEXCore. Allo stesso modo, i Proton ARM usano il proprio FEXCore.
+
+
+Español
+-------
+
+Este sistema es un sistema abierto. Se ha optimizado para ser usado en dispositivos handheld ARM.
+
+Hay dos conversores de x86_64 a ARM: BOX64 y FEXEmu. Para que funcione Decky Loader es necesaria la instalación de UNO de estos conversores antes de instalar Decky Loader.
+
+Si no sabéis qué instalar, aconsejo la opción más fácil: BOX64 es rápido de instalar, ocupa muy poco y es poco invasivo en el sistema. Lo suficiente para que funcione bien Decky Loader.
+
+BOX64 no influye en Steam, ya que si se usa un Proton x86_64, el propio Steam instala y usa su propio FEXCore. Del mismo modo, los Proton ARM usan su propio FEXCore.

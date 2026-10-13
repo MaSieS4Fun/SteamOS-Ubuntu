@@ -1,0 +1,52 @@
+From: MaSi <masi@localhost>
+Subject: [PATCH] PM: keep SM8750 suspend on s2idle
+
+The shared boot image sets mem_sleep_default=deep. SM8750 enters that
+state and a power-key tap does not wake it. s2idle does. Ignore a
+userspace "deep" write, and if "mem" is requested while deep is still
+selected, suspend to idle.
+
+--- a/kernel/power/main.c
++++ b/kernel/power/main.c
+@@ -20,6 +20,7 @@
+ #include <linux/pm_runtime.h>
+ #include <linux/atomic.h>
+ #include <linux/wait.h>
++#include <linux/of.h>
+ 
+ #include "power.h"
+ 
+@@ -275,9 +276,13 @@
+ 	}
+ 
+ 	state = decode_suspend_state(buf, n);
+-	if (state < PM_SUSPEND_MAX && state > PM_SUSPEND_ON)
++	if (state < PM_SUSPEND_MAX && state > PM_SUSPEND_ON) {
++		/* SM8750 does not wake from deep. Keep the stored mode on s2idle. */
++		if (state == PM_SUSPEND_MEM &&
++		    of_machine_is_compatible("qcom,sm8750"))
++			state = PM_SUSPEND_TO_IDLE;
+ 		mem_sleep_current = state;
+-	else
++	} else
+ 		error = -EINVAL;
+ 
+  out:
+@@ -813,8 +818,16 @@
+ 
+ 	state = decode_state(buf, n);
+ 	if (state < PM_SUSPEND_MAX) {
+-		if (state == PM_SUSPEND_MEM)
++		if (state == PM_SUSPEND_MEM) {
+ 			state = mem_sleep_current;
++			/*
++			 * Shared cmdline asks for deep. A short power press does not
++			 * wake SM8750 from that path; s2idle does.
++			 */
++			if (state == PM_SUSPEND_MEM &&
++			    of_machine_is_compatible("qcom,sm8750"))
++				state = PM_SUSPEND_TO_IDLE;
++		}
+ 
+ 		error = pm_suspend(state);
+ 	} else if (state == PM_SUSPEND_MAX) {

@@ -1,0 +1,77 @@
+From: MaSi <masi@localhost>
+Subject: [PATCH] ath12k: reload WCN after resume, over FBC
+
+A successful AMSS download clears fbc_download, so the next power-up
+uses BHIE and the WCN never sets MHI READY. Doing that boot inside
+resume_early flushes the MHI state worker from the PM callback and the
+panel never comes back. Keep FBC for the reload, and run it only after
+the PM transition has returned.
+
+--- a/drivers/net/wireless/ath/ath12k/mhi.c
++++ b/drivers/net/wireless/ath/ath12k/mhi.c
+@@ -484,6 +484,14 @@
+ 	int ret;
+ 
+ 	ab_pci->mhi_ctrl->timeout_ms = timeout_ms;
++	/* AMSS success clears fbc_download. The next power-up then uses
++	 * BHIE and the WCN never sets READY. FBC is the boot path.
++	 */
++	ab_pci->mhi_ctrl->fbc_download = true;
++
++	if (test_bit(ATH12K_MHI_INIT, &ab_pci->mhi_state) &&
++	    !test_bit(ATH12K_MHI_POWER_ON, &ab_pci->mhi_state))
++		ath12k_mhi_set_state(ab_pci, ATH12K_MHI_DEINIT);
+ 
+ 	ret = ath12k_mhi_set_state(ab_pci, ATH12K_MHI_INIT);
+ 	if (ret)
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -186,24 +186,16 @@
+ 	if (ret <= 0)
+ 		return ret;
+ 
++	/*
++	 * Do not boot MHI inside this callback. The FBC download runs on
++	 * the MHI state worker, and the timeout path flushes that worker
++	 * while it is still the running work, so resume never returns and
++	 * the panel stays off. Reload the radio after the PM transition.
++	 */
+ 	reinit_completion(&ab->restart_completed);
+-	ret = ath12k_hif_power_up(ab);
+-	if (ret) {
+-		ath12k_warn(ab, "failed to power up hif during resume: %d\n", ret);
+-		/* power_down(keep_dev) leaves WCN7850/WCN7860 unable to
+-		 * reach mission mode. The failed start already powered MHI
+-		 * fully off; one cold start is the path that works at boot.
+-		 */
+-		ret = ath12k_hif_power_up(ab);
+-	}
+-	if (ret) {
+-		ath12k_warn(ab, "hif resume retry failed: %d\n", ret);
+-		complete(&ab->restart_completed);
+-		queue_work(ab->workqueue, &ab->reset_work);
+-		return 0;
+-	}
+-
+-	return ret;
++	complete(&ab->restart_completed);
++	queue_work(ab->workqueue, &ab->reset_work);
++	return 0;
+ }
+ EXPORT_SYMBOL(ath12k_core_resume_early);
+ 
+--- a/drivers/net/wireless/ath/ath12k/pci.c
++++ b/drivers/net/wireless/ath/ath12k/pci.c
+@@ -1792,12 +1792,9 @@
+ static __maybe_unused int ath12k_pci_pm_resume_early(struct device *dev)
+ {
+ 	struct ath12k_base *ab = dev_get_drvdata(dev);
+-	struct ath12k_pci *ab_pci = ath12k_pci_priv(ab);
+ 	int ret;
+ 
+-	set_bit(ATH12K_PCI_FLAG_RESUME_POWER, &ab_pci->flags);
+ 	ret = ath12k_core_resume_early(ab);
+-	clear_bit(ATH12K_PCI_FLAG_RESUME_POWER, &ab_pci->flags);
+ 	if (ret)
+ 		ath12k_warn(ab, "failed to early resume core: %d\n", ret);
+ 

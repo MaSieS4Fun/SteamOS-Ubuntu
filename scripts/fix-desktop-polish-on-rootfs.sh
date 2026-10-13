@@ -31,7 +31,10 @@ overlay usr/share/applications/steamos-gamemode.desktop 0644
 # steamos-gaming-mode.desktop removed (duplicate of steamos-gamemode)
 rm -f "$ROOT/usr/share/applications/steamos-gaming-mode.desktop" \
   "$ROOT/home/steam/Desktop/steamos-gaming-mode.desktop" 2>/dev/null || true
-overlay usr/share/applications/steambp.desktop 0644
+# steambp.desktop is a Desktop icon (vendor/SteamARM), not a Games-menu entry.
+rm -f "$ROOT/usr/share/applications/steambp.desktop" \
+  "$ROOT/usr/local/share/applications/steambp.desktop" \
+  2>/dev/null || true
 overlay usr/bin/steamos-desktop-to-gamescope 0755
 overlay usr/bin/steamos-desktop-gamescope 0755
 overlay etc/systemd/logind.conf.d/steamos-power.conf 0644
@@ -71,8 +74,19 @@ install -d "$ROOT/home/steam/Desktop" "$ROOT/home/steam/.config"
 cp -a "$ROOT/usr/share/applications/steamos-gamemode.desktop" \
   "$ROOT/home/steam/Desktop/steamos-gamemode.desktop"
 chmod 0755 "$ROOT/home/steam/Desktop/steamos-gamemode.desktop"
-rm -f "$ROOT/home/steam/Desktop/steambp.desktop" \
-  "$ROOT/etc/skel/Desktop/steambp.desktop" 2>/dev/null || true
+install -d "$ROOT/etc/skel/Desktop"
+if [[ -f "$ROOT_DIR/vendor/SteamARM/steambp.desktop" ]]; then
+  install -m 0755 "$ROOT_DIR/vendor/SteamARM/steambp.desktop" \
+    "$ROOT/home/steam/Desktop/steambp.desktop"
+  install -m 0755 "$ROOT_DIR/vendor/SteamARM/steambp.desktop" \
+    "$ROOT/etc/skel/Desktop/steambp.desktop"
+fi
+if [[ -f "$ROOT_DIR/system_files/etc/skel/Desktop/usage-notes.txt" ]]; then
+  install -m 0644 "$ROOT_DIR/system_files/etc/skel/Desktop/usage-notes.txt" \
+    "$ROOT/home/steam/Desktop/usage-notes.txt"
+  install -m 0644 "$ROOT_DIR/system_files/etc/skel/Desktop/usage-notes.txt" \
+    "$ROOT/etc/skel/Desktop/usage-notes.txt"
+fi
 cp -a "$ROOT/etc/xdg/powerdevilrc" "$ROOT/home/steam/.config/powerdevilrc"
 chown -R "${STEAM_UID}:${STEAM_GID}" \
   "$ROOT/home/steam/Desktop" "$ROOT/home/steam/.config/powerdevilrc"

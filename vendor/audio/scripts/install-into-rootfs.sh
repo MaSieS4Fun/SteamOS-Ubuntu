@@ -45,5 +45,44 @@ if [[ -f "${HERE}/wireplumber/wireplumber.conf.d/51-sm8550-hifi-priority.conf" ]
 fi
 
 echo "Installed SM8550 audio drop-in into ${ROOT}"
+
+# AYN Odin 3 (SM8750). Helpers exit on any other card, so this is safe on Odin 2 / Thor.
+ODIN3="${HERE}/ODIN3"
+if [[ -d "${ODIN3}/ucm2" ]]; then
+  echo "Installing Odin 3 (SM8750) audio drop-in"
+  install -d "${ROOT}/usr/share/alsa/ucm2"
+  cp -a "${ODIN3}/ucm2/." "${ROOT}/usr/share/alsa/ucm2/"
+  if [[ -d "${ODIN3}/firmware" ]]; then
+    install -d "${ROOT}/lib/firmware"
+    cp -a "${ODIN3}/firmware/." "${ROOT}/lib/firmware/"
+  fi
+  if [[ -d "${ODIN3}/wireplumber" ]]; then
+    install -d "${ROOT}/usr/share/wireplumber"
+    cp -a "${ODIN3}/wireplumber/." "${ROOT}/usr/share/wireplumber/"
+  fi
+  if [[ -d "${ODIN3}/systemd/user" ]]; then
+    install -d "${ROOT}/usr/lib/systemd/user"
+    cp -a "${ODIN3}/systemd/user/." "${ROOT}/usr/lib/systemd/user/"
+  fi
+  install -d "${ROOT}/usr/libexec/audio-odin3"
+  install -m 0755 "${ODIN3}/scripts/wait-sm8750-audio" \
+    "${ROOT}/usr/libexec/audio-odin3/wait-sm8750-audio"
+  install -m 0755 "${ODIN3}/scripts/sm8750-audio-profile" \
+    "${ROOT}/usr/libexec/audio-odin3/sm8750-audio-profile"
+  install -d "${ROOT}/usr/lib/systemd/user/default.target.wants" \
+    "${ROOT}/usr/lib/systemd/user/wireplumber.service.wants"
+  ln -sfn ../sm8750-audio-profile.service \
+    "${ROOT}/usr/lib/systemd/user/default.target.wants/sm8750-audio-profile.service"
+  ln -sfn ../sm8750-audio-ready.service \
+    "${ROOT}/usr/lib/systemd/user/wireplumber.service.wants/sm8750-audio-ready.service"
+  [[ -f "${ROOT}/usr/share/alsa/ucm2/AYN/Odin3/HiFi.conf" ]] \
+    || { echo "ERROR: Odin 3 UCM missing after install" >&2; exit 1; }
+  [[ -f "${ROOT}/lib/firmware/qcom/sm8750/SM8750-AYN-tplg.bin" ]] \
+    || { echo "ERROR: Odin 3 topology firmware missing after install" >&2; exit 1; }
+  [[ -e "${ROOT}/usr/share/alsa/ucm2/conf.d/sm8750/SM8750-AYN.conf" ]] \
+    || { echo "ERROR: Odin 3 UCM card link missing" >&2; exit 1; }
+  echo "Installed Odin 3 audio into ${ROOT}"
+fi
+
 echo "Ensure packages: pipewire pipewire-pulse wireplumber pipewire-alsa alsa-ucm-conf alsa-utils"
 echo "Verify: cat /proc/asound/cards ; pactl list cards"

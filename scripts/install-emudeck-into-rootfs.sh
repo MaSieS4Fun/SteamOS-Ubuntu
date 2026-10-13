@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Not used by the image (install-vendor-apps.sh). EmuDeck is a beta and is
+# left out of the Games menu on purpose. This script remains for a manual install.
+#
 # Descarga EmuDeck (AppImage arm64) y crea entrada en menú Games.
 # NO ejecuta el wizard interactivo — solo deja el AppImage listo.
 #

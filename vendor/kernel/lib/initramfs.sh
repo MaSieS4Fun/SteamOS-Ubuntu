@@ -100,7 +100,7 @@ resolve_gold_initrd_ref() {
     shopt -s nullglob
     for candidate in \
         "${ROOT}/reference"/initrd.img-* \
-        /boot/initrd.img-*edge-sm8550* \
+        /boot/initrd.img-*edge* \
         /boot/initrd.img-*; do
         _initrd_try_ref "${candidate}" && {
             echo "  gold: using ${candidate}" >&2

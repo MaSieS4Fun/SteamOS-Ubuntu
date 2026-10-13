@@ -1267,8 +1267,8 @@ verify_sm8550_72_required() {
         "${src_dir}/drivers/input/misc/qcom-hv-haptics.c" 2>/dev/null || ok=0
     grep -q 'pci_upstream_bridge(ab_pci->pdev)' \
         "${src_dir}/drivers/net/wireless/ath/ath12k/pci.c" 2>/dev/null || ok=0
-    grep -q 'ath12k_masi_s2ram_force' \
-        "${src_dir}/drivers/net/wireless/ath/ath12k/core.c" 2>/dev/null || ok=0
+    grep -q 'pci_d3cold_disable(pdev)' \
+        "${src_dir}/drivers/net/wireless/ath/ath12k/wifi7/pci.c" 2>/dev/null || ok=0
     grep -q 'timeout_ms = 20000' \
         "${src_dir}/drivers/net/wireless/ath/ath12k/wifi7/mhi.c" 2>/dev/null || ok=0
     grep -q 'loading AMSS inline' \

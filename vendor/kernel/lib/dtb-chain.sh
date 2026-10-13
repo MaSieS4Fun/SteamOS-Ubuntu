@@ -46,7 +46,10 @@ resolve_build_out_dir() {
         [[ -f "${staging}/Image" ]] && echo "${BUILD_OUT_DIR}" && return 0
     fi
     local latest staging
-    latest="$(find "${OUTPUT_DIR}" -maxdepth 1 -type d -name '*-edge-sm8550-*' 2>/dev/null | sort -V | tail -1)"
+    latest="$(find "${OUTPUT_DIR}" -maxdepth 1 -type d \( \
+        -name "*${KERNEL_LOCALVERSION}-${OUTPUT_SUFFIX:-kbase}" -o \
+        -name '*-edge-sm8550-*' \
+        \) -printf '%T@ %p\n' 2>/dev/null | sort -n | awk 'END { print $2 }')"
     [[ -n "${latest}" ]] || return 1
     staging="$(resolve_build_staging_dir "${latest}")"
     [[ -f "${staging}/Image" ]] || return 1

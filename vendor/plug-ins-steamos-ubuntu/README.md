@@ -2,24 +2,21 @@
 
 ## Empaquetado en imagen
 
-| Plugin | Upstream basis | In image |
-|--------|----------------|----------|
-| `power-managment/` | [Hooandee/panel-de-control](https://github.com/Hooandee/panel-de-control) → SM8550 Power | `/usr/share/steamos-ubuntu/decky-plugins/` → `~/homebrew/plugins/` after Decky install |
-| `color-leds/` | [Hooandee/decky-colores](https://github.com/Hooandee/decky-colores) → SM8550 LED | same |
+| Plugin | Upstream | In image |
+|--------|----------|----------|
+| Panel de Control | [Hooandee/panel-de-control](https://github.com/Hooandee/panel-de-control) v0.67.1 (`upstream/Panel.de.Control.zip`) | `/usr/share/steamos-ubuntu/decky-plugins/Panel de Control/` → `~/homebrew/plugins/` after Decky install |
+| Colores | [Hooandee/decky-colores](https://github.com/Hooandee/decky-colores) v0.31.0 (`upstream/Colores.zip`) | same |
 | `decky-lsfg-vk/` | LSFG framegen (PancakeTAS / xXJSONDeruloXx) | Full snapshot under `/home/steam/` + plugin bundle |
 
-After Decky install, `sync-decky-bundled-plugins.sh` installs all three plugins into `~/homebrew/plugins/`.
+The in-tree `power-managment/` (SM8550-Power) and `color-leds/` (SM8550-LED) trees are not installed.
+
+After Decky install, `sync-decky-bundled-plugins.sh` installs Panel de Control, Colores, and LSFG into `~/homebrew/plugins/`, and removes SM8550-Power / SM8550-LED if they are already there.
 
 Full upstream credits: [`CREDITS.md`](../../CREDITS.md) at the repository root.
 
 ## Antes de crear la imagen
 
-Construir frontends TypeScript (requiere Node 18+ / pnpm):
-
-```bash
-cd vendor/plug-ins-steamos-ubuntu/power-managment && ./build.sh
-cd vendor/plug-ins-steamos-ubuntu/color-leds && ./build.sh
-```
+Panel de Control y Colores van en `upstream/` como zip de la release de Hooandee. No hace falta compilarlos.
 
 `decky-lsfg-vk` ya incluye `dist/index.js` precompilado.
 

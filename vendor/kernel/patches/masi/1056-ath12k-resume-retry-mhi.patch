@@ -1,0 +1,112 @@
+From: MaSi <masi@localhost>
+Subject: [PATCH] ath12k: retry WCN resume without holding the screen
+
+Resume powers the radio down with keep_dev, then mhi_sync_power_up waits
+for mission mode and returns -ETIMEDOUT. The netdev stays shut down, so
+NetworkManager cannot scan or reconnect. A cold start of the same chip
+reaches mission mode immediately.
+
+On the resume path wait 3s, try one full power-up, and if that also fails
+let the rest of the system resume and recover the radio from reset_work.
+
+--- a/drivers/net/wireless/ath/ath12k/pci.h
++++ b/drivers/net/wireless/ath/ath12k/pci.h
+@@ -93,6 +93,7 @@
+ 	ATH12K_PCI_FLAG_IS_MSI_64,
+ 	ATH12K_PCI_ASPM_RESTORE,
+ 	ATH12K_PCI_FLAG_MULTI_MSI_VECTORS,
++	ATH12K_PCI_FLAG_RESUME_POWER,
+ };
+ 
+ struct ath12k_pci_ops {
+--- a/drivers/net/wireless/ath/ath12k/mhi.h
++++ b/drivers/net/wireless/ath/ath12k/mhi.h
+@@ -32,6 +32,7 @@
+ };
+ 
+ int ath12k_mhi_start(struct ath12k_pci *ar_pci);
++int ath12k_mhi_start_timeout(struct ath12k_pci *ar_pci, unsigned int timeout_ms);
+ void ath12k_mhi_stop(struct ath12k_pci *ar_pci, bool is_suspend);
+ int ath12k_mhi_register(struct ath12k_pci *ar_pci);
+ void ath12k_mhi_unregister(struct ath12k_pci *ar_pci);
+--- a/drivers/net/wireless/ath/ath12k/mhi.c
++++ b/drivers/net/wireless/ath/ath12k/mhi.c
+@@ -489,11 +489,11 @@
+ 	return ret;
+ }
+ 
+-int ath12k_mhi_start(struct ath12k_pci *ab_pci)
++int ath12k_mhi_start_timeout(struct ath12k_pci *ab_pci, unsigned int timeout_ms)
+ {
+ 	int ret;
+ 
+-	ab_pci->mhi_ctrl->timeout_ms = MHI_TIMEOUT_DEFAULT_MS;
++	ab_pci->mhi_ctrl->timeout_ms = timeout_ms;
+ 
+ 	ret = ath12k_mhi_set_state(ab_pci, ATH12K_MHI_INIT);
+ 	if (ret)
+@@ -509,6 +509,11 @@
+ 	return ret;
+ }
+ 
++int ath12k_mhi_start(struct ath12k_pci *ab_pci)
++{
++	return ath12k_mhi_start_timeout(ab_pci, MHI_TIMEOUT_DEFAULT_MS);
++}
++
+ void ath12k_mhi_stop(struct ath12k_pci *ab_pci, bool is_suspend)
+ {
+ 	/* During suspend we need to use mhi_power_down_keep_dev()
+--- a/drivers/net/wireless/ath/ath12k/pci.c
++++ b/drivers/net/wireless/ath/ath12k/pci.c
+@@ -1464,7 +1464,10 @@
+ 	if (ath12k_fw_feature_supported(ab, ATH12K_FW_FEATURE_MULTI_QRTR_ID))
+ 		ath12k_pci_update_qrtr_node_id(ab);
+ 
+-	ret = ath12k_mhi_start(ab_pci);
++	if (test_bit(ATH12K_PCI_FLAG_RESUME_POWER, &ab_pci->flags))
++		ret = ath12k_mhi_start_timeout(ab_pci, 3000);
++	else
++		ret = ath12k_mhi_start(ab_pci);
+ 	if (ret) {
+ 		ath12k_err(ab, "failed to start mhi: %d\n", ret);
+ 		return ret;
+@@ -1809,10 +1812,13 @@
+ 
+ static __maybe_unused int ath12k_pci_pm_resume_early(struct device *dev)
+ {
+ 	struct ath12k_base *ab = dev_get_drvdata(dev);
++	struct ath12k_pci *ab_pci = ath12k_pci_priv(ab);
+ 	int ret;
+ 
+-	ret = ath12k_core_resume_early(ab);
++	set_bit(ATH12K_PCI_FLAG_RESUME_POWER, &ab_pci->flags);
++	ret = ath12k_core_resume_early(ab);
++	clear_bit(ATH12K_PCI_FLAG_RESUME_POWER, &ab_pci->flags);
+ 	if (ret)
+ 		ath12k_warn(ab, "failed to early resume core: %d\n", ret);
+ 
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -216,8 +216,20 @@
+ 	reinit_completion(&ab->restart_completed);
+ 	ret = ath12k_hif_power_up(ab);
+-	if (ret)
++	if (ret) {
+ 		ath12k_warn(ab, "failed to power up hif during resume: %d\n", ret);
++		/* power_down(keep_dev) leaves WCN7850/WCN7860 unable to
++		 * reach mission mode. The failed start already powered MHI
++		 * fully off; one cold start is the path that works at boot.
++		 */
++		ret = ath12k_hif_power_up(ab);
++	}
++	if (ret) {
++		ath12k_warn(ab, "hif resume retry failed: %d\n", ret);
++		complete(&ab->restart_completed);
++		queue_work(ab->workqueue, &ab->reset_work);
++		return 0;
++	}
+ 
+ 	return ret;
+ }
+ EXPORT_SYMBOL(ath12k_core_resume_early);

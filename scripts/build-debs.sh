@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./scripts/build-debs.sh
-#   KERNEL_VER=7.2.2-edge-sm8550 ./scripts/build-debs.sh
+#   KERNEL_VER=7.2.10-edge-sm8550 ./scripts/build-debs.sh
 #   BUILD_KERNEL_DEB=1 ./scripts/build-debs.sh   # default — embed vendor/kernel/output/*-kbase
 #
 set -euo pipefail
@@ -20,12 +20,18 @@ log() { printf '==> [build-debs] %s\n' "$*" >&2; }
 die() { printf 'ERROR: [build-debs] %s\n' "$*" >&2; exit 1; }
 
 resolve_kernel_kbase_dir() {
-    local suffix="${OUTPUT_SUFFIX:-kbase}" kbase=""
-    kbase="${ROOT_DIR}/vendor/kernel/output/${KERNEL_VER}-${suffix}"
-    if [[ -f "${kbase}/boot/KERNEL" ]]; then
-        printf '%s\n' "${kbase}"
-        return 0
-    fi
+    local suffix="${OUTPUT_SUFFIX:-kbase}" kbase="" stem=""
+    # Apt version is 7.2.10-edge-sm8550; the tree is 7.2.10-edge-kbase.
+    stem="${KERNEL_VER%-sm8550}"
+    for kbase in \
+        "${ROOT_DIR}/vendor/kernel/output/${KERNEL_VER}-${suffix}" \
+        "${ROOT_DIR}/vendor/kernel/output/${stem}-${suffix}"
+    do
+        if [[ -f "${kbase}/boot/KERNEL" ]]; then
+            printf '%s\n' "${kbase}"
+            return 0
+        fi
+    done
     shopt -s nullglob
     local candidates=( "${ROOT_DIR}/vendor/kernel/output/"*-"${suffix}"/ )
     shopt -u nullglob
@@ -84,7 +90,7 @@ EOF
     cat > "${staging}/usr/share/applications/mesa-easy-manager.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=MESA Easy Manager
+Name=Graphic Drivers Manager
 GenericName=Mesa Freedreno Vulkan Manager
 Comment=Switch Freedreno Vulkan (libvulkan_freedreno.so) on Adreno GPUs
 Exec=mesa-easy-manager
@@ -387,8 +393,10 @@ Version: ${PKG_MASI_KERNEL_EDGE_SM8550}
 Architecture: arm64
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
 Depends: abootimg, rsync, coreutils, util-linux, findutils, grep, sed, gawk | mawk, mount
-Description: MaSi SM8550 edge kernel (${KERNEL_VER}) — apt install/upgrade flashes boot/firmware/modules
- Embeds kernel bundle; postinst repacks KERNEL for this device and installs boot/firmware/modules.
+Description: MaSi edge kernel 7.2.10 (SM8550 and SM8750 / Odin 3) — apt upgrade flashes boot/firmware/modules
+ Embeds the 7.2.10-edge bundle. postinst repacks KERNEL with this card's root UUID
+ (each flashed image has its own) and installs boot, firmware, and modules.
+ uname -r is 7.2.10-edge.
  Homepage: https://github.com/${STEAMOS_UBUNTU_GITHUB_REPO}
 EOF
 }
@@ -454,7 +462,7 @@ EOF
     cat > "${staging}/usr/share/applications/emukitarm.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=EmuKitARM
+Name=Emulators-Script
 GenericName=Emulator Installer
 Comment=Emulator installer for Snapdragon 8 Gen 2 (sm8550)
 Exec=emukitarm
@@ -519,9 +527,28 @@ build_one() {
 command -v dpkg-deb >/dev/null 2>&1 || die "install dpkg-deb (apt install dpkg-dev)"
 
 mkdir -p "${OUT_DEBS}" "${WORK}"
-rm -f "${OUT_DEBS}"/*.deb 2>/dev/null || true
+ONLY="${1:-}"
+if [[ -z "$ONLY" ]]; then
+    rm -f "${OUT_DEBS}"/*.deb 2>/dev/null || true
+fi
 rm -rf "${WORK:?}"/*
 mkdir -p "${WORK}"
+
+if [[ -n "$ONLY" ]]; then
+    case "$ONLY" in
+        mesa-easy-manager) build_one mesa-easy-manager "${PKG_MESA_EASY_MANAGER}" ;;
+        easy-ufs-install) build_one easy-ufs-install "${PKG_EASY_UFS_INSTALL}" ;;
+        proton-arm-easy-manager) build_one proton-arm-easy-manager "${PKG_PROTON_ARM_EASY_MANAGER}" ;;
+        no-steam-games) build_one no-steam-games "${PKG_NO_STEAM_GAMES}" ;;
+        gyro-desktop) build_one gyro-desktop "${PKG_GYRO_DESKTOP}" ;;
+        emukitarm) build_one emukitarm "${PKG_EMUKITARM}" ;;
+        masi-kernel-edge-sm8550) build_one masi-kernel-edge-sm8550 "${PKG_MASI_KERNEL_EDGE_SM8550}" ;;
+        steamos-ubuntu-apps) build_one steamos-ubuntu-apps "${PKG_STEAMOS_UBUNTU_APPS}" all ;;
+        *) die "unknown package: ${ONLY}" ;;
+    esac
+    log "Built ${ONLY} → ${OUT_DEBS}"
+    exit 0
+fi
 
 log "Building debs → ${OUT_DEBS}"
 build_one mesa-easy-manager "${PKG_MESA_EASY_MANAGER}"

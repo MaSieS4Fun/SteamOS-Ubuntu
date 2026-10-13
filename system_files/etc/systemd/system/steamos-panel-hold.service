@@ -1,5 +1,5 @@
 [Unit]
-Description=Black panel until gamescope owns the display
+Description=Boot splash until gamescope owns the display
 DefaultDependencies=no
 After=systemd-sysctl.service systemd-journald.service
 Before=greetd.service display-manager.service

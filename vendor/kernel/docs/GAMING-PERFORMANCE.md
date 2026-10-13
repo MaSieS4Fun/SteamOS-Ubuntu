@@ -174,7 +174,7 @@ Also required from **Armbian SM8550 patches** (not kconfig alone): correct `capa
 Release string baked into modules:
 
 ```kconfig
-CONFIG_LOCALVERSION="-edge-sm8550"
+CONFIG_LOCALVERSION="-edge"
 ```
 
 (`KERNEL_LOCALVERSION` in build defaults.)
@@ -239,7 +239,7 @@ Environment / defaults (`config/defaults.conf`):
 |----------|-------------------|--------|
 | `GAMING_TUNING` | `1` | Applies golden overrides + AYN panel/touch drivers |
 | `KERNEL_CONFIG` | `config/golden.config` | Or auto-resolved from repo |
-| `KERNEL_LOCALVERSION` | `-edge-sm8550` | Module path: `7.0.14-edge-sm8550` |
+| `KERNEL_LOCALVERSION` | `-edge` | Module path: `7.2.9-edge` |
 | `INITRAMFS_PROFILE` | `gold` | Small initrd for ABL |
 | `FIRMWARE_IN_INITRD` | `minimal` | Only if using `efi-clean` mkinitramfs |
 | `INITRD_MAX_MB` | `62` | Hard limit check |

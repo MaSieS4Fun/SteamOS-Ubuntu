@@ -418,94 +418,491 @@ def apply_ath12k_aspm(src: Path) -> bool:
     return True
 
 
-def apply_ath12k_s2ram(src: Path) -> bool:
-    """Force ath12k power_down on PM_SUSPEND_MEM even if HW is not OFF.
+def _arm_ath12k_delayed_reload(text: str, *, required: bool = False) -> str | None:
+    """Start the radio reload after resume has finished.
 
-    WCN7850 advertises supports_suspend, but continue_suspend_resume
-    returns 0 unless ATH12K_HW_STATE_OFF. wlan0 down does not reach that
-    state, so system suspend succeeds without MHI power-down: chip stays
-    M0, ASPM stays off, upper-right heat, hang, force-off.
+    queue_work() from resume_early runs MHI while the panel is still
+    coming back. The same system workqueue also polls MHI events, so
+    that reload can sit in front of the poller and the resume thread
+    never returns.
     """
-    core = src / "drivers/net/wireless/ath/ath12k/core.c"
-    if not core.is_file():
-        return True
-    text = orig = core.read_text()
-    if "ath12k_masi_s2ram_force" in text:
-        print("  OK   ath12k S2RAM force power-down (1055, already)", file=sys.stderr)
-        return True
-
-    if "#include <linux/suspend.h>" not in text:
+    if "ath12k_masi_resume_dwork" in text:
+        return _fix_ath12k_reload_cancel(text)
+    if "#include <linux/workqueue.h>" not in text:
         if "#include <linux/export.h>\n" not in text:
-            print("  FAIL ath12k s2ram: no export.h include", file=sys.stderr)
-            return False
+            print("  FAIL ath12k resume delay: no export.h include", file=sys.stderr)
+            return None
         text = text.replace(
             "#include <linux/export.h>\n",
-            "#include <linux/export.h>\n#include <linux/suspend.h>\n",
+            "#include <linux/export.h>\n#include <linux/workqueue.h>\n",
             1,
         )
+    old = (
+        "\tcomplete(&ab->restart_completed);\n"
+        "\tqueue_work(ab->workqueue, &ab->reset_work);\n"
+    )
+    new = (
+        "\tcomplete(&ab->restart_completed);\n"
+        "\t/* MHI reload shares a worker with the path that brings the\n"
+        "\t * panel back. Start it only after this resume has finished.\n"
+        "\t */\n"
+        "\tWRITE_ONCE(ath12k_masi_resume_ab, ab);\n"
+        "\tmod_delayed_work(system_wq, &ath12k_masi_resume_dwork, 3 * HZ);\n"
+    )
+    if old not in text:
+        if required:
+            print("  FAIL ath12k resume delay: queue_work marker", file=sys.stderr)
+            return None
+        return text
+    text = text.replace(old, new, 1)
+    helper = """static struct ath12k_base *ath12k_masi_resume_ab;
 
-    old = """static int ath12k_core_continue_suspend_resume(struct ath12k_base *ab)
+static void ath12k_masi_resume_reload(struct work_struct *work)
 {
-	struct ath12k *ar;
+	struct ath12k_base *ab = READ_ONCE(ath12k_masi_resume_ab);
+	int ret;
 
-	if (!ab->hw_params->supports_suspend)
-		return -EOPNOTSUPP;
-
-	/* so far single_pdev_only chips have supports_suspend as true
-	 * so pass 0 as a dummy pdev_id here.
+	if (!ab)
+		return;
+	/*
+	 * core_reset() locks the wiphy while NetworkManager is already
+	 * starting the interface, and the two wait on each other. Boot
+	 * the firmware on its own. The firmware-ready path restarts it.
 	 */
-	ar = ab->pdevs[0].ar;
-	if (!ar || !ar->ah || ar->ah->state != ATH12K_HW_STATE_OFF)
-		return 0;
-
-	return 1;
+	ret = ath12k_hif_power_up(ab);
+	if (ret)
+		ath12k_warn(ab, "failed to power up WCN after resume: %d\\n", ret);
 }
-"""
-    new = """static bool ath12k_masi_s2ram_force;
 
-static int ath12k_core_continue_suspend_resume(struct ath12k_base *ab)
+static DECLARE_DELAYED_WORK(ath12k_masi_resume_dwork, ath12k_masi_resume_reload);
+
+"""
+    anchor = "static int ath12k_core_continue_suspend_resume(struct ath12k_base *ab)\n"
+    if anchor not in text:
+        print("  FAIL ath12k resume delay: continue marker", file=sys.stderr)
+        return None
+    text = text.replace(anchor, helper + anchor, 1)
+    return _fix_ath12k_reload_cancel(text)
+
+
+def _fix_ath12k_reload_cancel(text: str) -> str:
+    """Keep the reload queued across resume.
+
+    resume_early queues it, then ath12k_core_resume() calls
+    continue_suspend_resume() and a cancel there drops the reload.
+    Cancel only when the next suspend is powering the radio down.
+    """
+    parked = """static int ath12k_core_continue_suspend_resume(struct ath12k_base *ab)
 {
 	struct ath12k *ar;
 
-	if (!ab->hw_params->supports_suspend)
-		return -EOPNOTSUPP;
-
-	/* so far single_pdev_only chips have supports_suspend as true
-	 * so pass 0 as a dummy pdev_id here.
+	cancel_delayed_work(&ath12k_masi_resume_dwork);
+"""
+    plain = """static int ath12k_core_continue_suspend_resume(struct ath12k_base *ab)
+{
+	struct ath12k *ar;
+"""
+    if parked in text:
+        text = text.replace(parked, plain, 1)
+    old_reload = """	if (ab)
+		queue_work(ab->workqueue, &ab->reset_work);
+"""
+    new_reload = """	if (!ab)
+		return;
+	/*
+	 * core_reset() locks the wiphy while NetworkManager is already
+	 * starting the interface, and the two wait on each other. Boot
+	 * the firmware on its own. The firmware-ready path restarts it.
 	 */
-	ar = ab->pdevs[0].ar;
-	if (!ar || !ar->ah)
-		return 0;
+	ret = ath12k_hif_power_up(ab);
+	if (ret)
+		ath12k_warn(ab, "failed to power up WCN after resume: %d\\n", ret);
+"""
+    if old_reload in text:
+        text = text.replace(old_reload, new_reload, 1)
+        text = text.replace(
+            "static void ath12k_masi_resume_reload(struct work_struct *work)\n"
+            "{\n"
+            "\tstruct ath12k_base *ab = READ_ONCE(ath12k_masi_resume_ab);\n",
+            "static void ath12k_masi_resume_reload(struct work_struct *work)\n"
+            "{\n"
+            "\tstruct ath12k_base *ab = READ_ONCE(ath12k_masi_resume_ab);\n"
+            "\tint ret;\n",
+            1,
+        )
+    needle = "\tath12k_hif_power_down(ab, true);\n"
+    armed = "\tcancel_delayed_work(&ath12k_masi_resume_dwork);\n" + needle
+    if needle in text and armed not in text:
+        text = text.replace(needle, armed, 1)
+    return text
 
-	/* WCN7850 stays ATH12K_HW_STATE_ON after wlan0 down. Skipping
-	 * power_down leaves MHI in M0 / ASPM off and the SoC hot, then
-	 * the machine never reaches PSCI (hang + force-off).
-	 */
-	if (ar->ah->state != ATH12K_HW_STATE_OFF) {
-#ifdef CONFIG_SUSPEND
-		if (pm_suspend_target_state == PM_SUSPEND_MEM) {
-			ath12k_masi_s2ram_force = true;
-			ath12k_info(ab, "S2RAM: power down WCN while hw state %d\\n",
-				    ar->ah->state);
-			return 1;
-		}
-		if (ath12k_masi_s2ram_force)
-			return 1;
-#endif
+
+def _ath12k_m3_instead_of_reboot(text: str) -> str | None:
+    """Keep the firmware resident across suspend.
+
+    power_down() plus a later power_up() deadlocks the system once the
+    session is back. M3 is the suspend state this chip already implements:
+    the link stays up and resume is a wake, not a firmware boot.
+    """
+    forced = (
+        "\t\t\tath12k_masi_s2ram_force = true;\n"
+        "\t\t\tath12k_info(ab, \"S2RAM: power down WCN while hw state %d\\n\",\n"
+        "\t\t\t\t    ar->ah->state);\n"
+        "\t\t\treturn 1;\n"
+    )
+    if forced in text:
+        text = text.replace(forced, "\t\t\treturn 0;\n", 1)
+    text = text.replace(
+        "\tmod_delayed_work(system_wq, &ath12k_masi_resume_dwork, 3 * HZ);\n",
+        "\t/* Firmware stays in M3. Do not boot it after resume. */\n",
+        1,
+    )
+    if "failed to suspend WCN" in text:
+        return text
+
+    old_s = """	ret = ath12k_core_continue_suspend_resume(ab);
+	if (ret <= 0)
+		return ret;
+
+	for (i = 0; i < ab->num_radios; i++) {
+"""
+    new_s = """	ret = ath12k_core_continue_suspend_resume(ab);
+	if (ret < 0)
+		return ret;
+	if (!ret) {
+		/* Keep the firmware resident. Booting it again after
+		 * resume deadlocks the system. M3 lets the SoC idle.
+		 */
+		ath12k_hif_irq_disable(ab);
+		ath12k_hif_ce_irq_disable(ab);
+		ret = ath12k_hif_suspend(ab);
+		if (ret)
+			ath12k_warn(ab, "failed to suspend WCN: %d\\n", ret);
 		return 0;
 	}
 
-	ath12k_masi_s2ram_force = false;
-	return 1;
-}
+	for (i = 0; i < ab->num_radios; i++) {
 """
+    old_r = """int ath12k_core_resume(struct ath12k_base *ab)
+{
+	long time_left;
+	int ret;
+
+	ret = ath12k_core_continue_suspend_resume(ab);
+	if (ret <= 0)
+		return ret;
+"""
+    new_r = """int ath12k_core_resume(struct ath12k_base *ab)
+{
+	long time_left;
+	int ret;
+
+	ret = ath12k_core_continue_suspend_resume(ab);
+	if (ret < 0)
+		return ret;
+	if (!ret) {
+		ret = ath12k_hif_resume(ab);
+		if (ret)
+			ath12k_warn(ab, "failed to resume WCN: %d\\n", ret);
+		ath12k_hif_ce_irq_enable(ab);
+		ath12k_hif_irq_enable(ab);
+		return 0;
+	}
+"""
+    if old_s not in text:
+        print("  FAIL ath12k m3: suspend marker", file=sys.stderr)
+        return None
+    if old_r not in text:
+        print("  FAIL ath12k m3: resume marker", file=sys.stderr)
+        return None
+    text = text.replace(old_s, new_s, 1)
+    return text.replace(old_r, new_r, 1)
+
+
+_M3_SUSPEND = """\tret = ath12k_core_continue_suspend_resume(ab);
+\tif (ret < 0)
+\t\treturn ret;
+\tif (!ret) {
+\t\t/* Keep the firmware resident. Booting it again after
+\t\t * resume deadlocks the system. M3 lets the SoC idle.
+\t\t */
+\t\tath12k_hif_irq_disable(ab);
+\t\tath12k_hif_ce_irq_disable(ab);
+\t\tret = ath12k_hif_suspend(ab);
+\t\tif (ret)
+\t\t\tath12k_warn(ab, "failed to suspend WCN: %d\\n", ret);
+\t\treturn 0;
+\t}
+
+\tfor (i = 0; i < ab->num_radios; i++) {
+"""
+
+_UPSTREAM_SUSPEND = """\tret = ath12k_core_continue_suspend_resume(ab);
+\tif (ret <= 0)
+\t\treturn ret;
+
+\tfor (i = 0; i < ab->num_radios; i++) {
+"""
+
+_M3_RESUME = """\tret = ath12k_core_continue_suspend_resume(ab);
+\tif (ret < 0)
+\t\treturn ret;
+\tif (!ret) {
+\t\tret = ath12k_hif_resume(ab);
+\t\tif (ret)
+\t\t\tath12k_warn(ab, "failed to resume WCN: %d\\n", ret);
+\t\tath12k_hif_ce_irq_enable(ab);
+\t\tath12k_hif_irq_enable(ab);
+\t\treturn 0;
+\t}
+"""
+
+_UPSTREAM_RESUME = """\tret = ath12k_core_continue_suspend_resume(ab);
+\tif (ret <= 0)
+\t\treturn ret;
+"""
+
+
+def _restore_ath12k_upstream_suspend(text: str) -> str | None:
+    """Drop the MaSi resume rewrite if a previous build left it in core.c.
+
+    hif_suspend/hif_resume and a later firmware boot run on the resume
+    thread. That thread is also what brings the panel back, so the screen
+    stays black, or the machine freezes once the boot is attempted.
+    """
+    if _M3_SUSPEND not in text and _M3_RESUME not in text:
+        if "failed to suspend WCN" in text or "failed to resume WCN" in text:
+            return None
+        return text
+    return text.replace(_M3_SUSPEND, _UPSTREAM_SUSPEND, 1).replace(
+        _M3_RESUME, _UPSTREAM_RESUME, 1
+    )
+
+
+def _wcn7860_stay_powered(src: Path) -> bool:
+    """Do not let the Odin 3 radio enter D3cold.
+
+    ARMADA confirmed this on SM8750: cutting the endpoint and turning the
+    WCN rails back on at resume leaves a black screen until a forced
+    power-off. pci_d3cold_disable() is the per-device form of
+    pci_host_common.endpoint_d3cold=0.
+    """
+    wifi7 = src / "drivers/net/wireless/ath/ath12k/wifi7/pci.c"
+    if not wifi7.is_file():
+        return True
+    text = orig = wifi7.read_text()
+    if "pci_d3cold_disable(pdev)" in text:
+        print("  OK   WCN7860 stays out of D3cold", file=sys.stderr)
+        return True
+    old = "\tcase WCN7860_DEVICE_ID:\n"
+    new = (
+        "\tcase WCN7860_DEVICE_ID:\n"
+        "\t\t/* D3cold cuts the WCN7860. Re-enabling it at resume hangs\n"
+        "\t\t * the SM8750 and the panel never comes back.\n"
+        "\t\t */\n"
+        "\t\tpci_d3cold_disable(pdev);\n"
+    )
     if old not in text:
-        print("  FAIL ath12k s2ram: continue_suspend_resume marker", file=sys.stderr)
+        if "WCN7860_DEVICE_ID" not in text:
+            return True
+        print("  FAIL WCN7860 d3cold: probe case missing", file=sys.stderr)
         return False
-    text = text.replace(old, new, 1)
-    _write_if_changed(core, orig, text)
-    print("  OK   ath12k S2RAM force power-down (1055)", file=sys.stderr)
+    _write_if_changed(wifi7, orig, text.replace(old, new, 1))
+    print("  OK   WCN7860 stays out of D3cold", file=sys.stderr)
     return True
+
+
+_S2IDLE_M3_SUSPEND = """\t/* s2idle keeps the firmware loaded. M3 lets it wake.
+\t * power_down boots it again and the panel stays black.
+\t */
+\tif (pm_suspend_default_s2idle()) {
+\t\tath12k_s2idle_m3 = false;
+\t\tath12k_hif_irq_disable(ab);
+\t\tath12k_hif_ce_irq_disable(ab);
+\t\tret = ath12k_hif_suspend(ab);
+\t\tif (ret)
+\t\t\tath12k_warn(ab, "WCN M3 suspend failed: %d\\n", ret);
+\t\telse
+\t\t\tath12k_s2idle_m3 = true;
+\t\treturn 0;
+\t}
+"""
+
+_S2IDLE_M3_RESUME = """\treinit_completion(&ab->restart_completed);
+\tif (pm_suspend_default_s2idle()) {
+\t\tif (ath12k_s2idle_m3) {
+\t\t\tath12k_s2idle_m3 = false;
+\t\t\tret = ath12k_hif_resume(ab);
+\t\t\tif (ret)
+\t\t\t\tath12k_warn(ab, "WCN M3 resume failed: %d\\n", ret);
+\t\t}
+\t\tath12k_hif_ce_irq_enable(ab);
+\t\tath12k_hif_irq_enable(ab);
+\t\tcomplete(&ab->restart_completed);
+\t\treturn 0;
+\t}
+"""
+
+
+def _s2idle_leaves_mhi_alone(body: str) -> bool:
+    """True when the s2idle branch returns before any MHI suspend or boot."""
+    for marker in (
+        "if (pm_suspend_target_state == PM_SUSPEND_TO_IDLE)",
+        "if (pm_suspend_default_s2idle())",
+    ):
+        idx = body.find(marker)
+        if idx < 0:
+            continue
+        window = body[idx:idx + 900]
+        ret = window.find("return 0;")
+        if ret < 0:
+            continue
+        branch = window[:ret]
+        if any(call in branch for call in (
+            "ath12k_hif_suspend",
+            "ath12k_hif_resume",
+            "ath12k_hif_power_up",
+            "ath12k_hif_power_down",
+        )):
+            return False
+        return True
+    return False
+
+
+def _keep_wcn_resident_on_s2idle(text: str) -> str | None:
+    """Leave the radio running across s2idle.
+
+    suspend_late powers it down, and resume_early then boots firmware on
+    the same thread that brings the panel back. The screen stays black.
+    s2idle does not cut the chip; mac80211 reconnects after resume.
+    """
+    if "#include <linux/suspend.h>" not in text:
+        needle = "#include <linux/of.h>\n"
+        if needle not in text:
+            return None
+        text = text.replace(needle, needle + "#include <linux/suspend.h>\n", 1)
+
+    late = text.split("int ath12k_core_suspend_late", 1)
+    early = text.split("int ath12k_core_resume_early", 1)
+    if len(late) != 2 or len(early) != 2:
+        return None
+    late_body = late[1].split("int ath12k_core_resume_early", 1)[0]
+    early_body = early[1].split("int ath12k_core_resume(", 1)[0]
+    # s2idle already returns before touching MHI. M3 and a firmware boot
+    # from this thread are what hold the panel off.
+    if (_s2idle_leaves_mhi_alone(late_body)
+            and _s2idle_leaves_mhi_alone(early_body)):
+        return text
+    if "ath12k_hif_suspend(ab)" in late_body and "ath12k_hif_resume(ab)" in early_body:
+        return text
+    if "static bool ath12k_s2idle_m3;" not in text:
+        text = text.replace(
+            "int ath12k_core_suspend_late(struct ath12k_base *ab)\n",
+            "static bool ath12k_s2idle_m3;\n\n"
+            "int ath12k_core_suspend_late(struct ath12k_base *ab)\n",
+            1,
+        )
+
+    parked = (
+        "\t/* s2idle keeps the firmware loaded. power_down forces a boot\n"
+        "\t * on resume, and that boot holds the panel off.\n"
+        "\t */\n"
+        "\tif (pm_suspend_default_s2idle())\n"
+        "\t\treturn 0;\n"
+    )
+    parked_wake = (
+        "\treinit_completion(&ab->restart_completed);\n"
+        "\t/* Firmware is still running. Do not boot it here. */\n"
+        "\tif (pm_suspend_default_s2idle()) {\n"
+        "\t\tcomplete(&ab->restart_completed);\n"
+        "\t\treturn 0;\n"
+        "\t}\n"
+    )
+    if parked in text and parked_wake in text:
+        text = text.replace(parked, _S2IDLE_M3_SUSPEND, 1)
+        return text.replace(parked_wake, _S2IDLE_M3_RESUME, 1)
+
+    old_down = (
+        "\tath12k_acpi_stop(ab);\n"
+        "\n"
+        "\tath12k_hif_irq_disable(ab);\n"
+        "\tath12k_hif_ce_irq_disable(ab);\n"
+        "\n"
+        "\tath12k_hif_power_down(ab, true);\n"
+    )
+    new_down = (
+        _S2IDLE_M3_SUSPEND
+        + "\n"
+        "\tath12k_acpi_stop(ab);\n"
+        "\n"
+        "\tath12k_hif_irq_disable(ab);\n"
+        "\tath12k_hif_ce_irq_disable(ab);\n"
+        "\n"
+        "\tath12k_hif_power_down(ab, true);\n"
+    )
+    old_boot = (
+        "\t/*\n"
+        "\t * Do not boot MHI inside this callback. The FBC download runs on\n"
+        "\t * the MHI state worker, and the timeout path flushes that worker\n"
+        "\t * while it is still the running work, so resume never returns and\n"
+        "\t * the panel stays off. Reload the radio after the PM transition.\n"
+        "\t */\n"
+        "\treinit_completion(&ab->restart_completed);\n"
+        "\tcomplete(&ab->restart_completed);\n"
+        "\tqueue_work(ab->workqueue, &ab->reset_work);\n"
+        "\treturn 0;\n"
+    )
+    new_boot = (
+        _S2IDLE_M3_RESUME
+        + "\n"
+        "\tret = ath12k_hif_power_up(ab);\n"
+        "\tif (ret) {\n"
+        "\t\tath12k_warn(ab, \"failed to power up hif during resume: %d\\n\", ret);\n"
+        "\t\tcomplete(&ab->restart_completed);\n"
+        "\t\treturn 0;\n"
+        "\t}\n"
+        "\n"
+        "\treturn 0;\n"
+    )
+    if old_down not in text or old_boot not in text:
+        return None
+    text = text.replace(old_down, new_down, 1)
+    return text.replace(old_boot, new_boot, 1)
+
+
+def apply_ath12k_s2ram(src: Path, *, require_delay: bool = False) -> bool:
+    """Leave ath12k suspend upstream. Do not boot the radio from resume.
+
+    _ath12k_m3_instead_of_reboot() and the delayed power_up below are the
+    experiments that held the panel off or froze the box. They are not
+    called. ARMADA's Odin 3 resume keeps the endpoint powered instead.
+    """
+    del require_delay
+    core = src / "drivers/net/wireless/ath/ath12k/core.c"
+    if core.is_file():
+        text = orig = core.read_text()
+        restored = _restore_ath12k_upstream_suspend(text)
+        if restored is None:
+            print(
+                "  FAIL ath12k suspend: core.c still has the MaSi resume hack "
+                "in a form this build cannot revert. Delete the cached "
+                "linux tree and rebuild.",
+                file=sys.stderr,
+            )
+            return False
+        kept = _keep_wcn_resident_on_s2idle(restored)
+        if kept is None:
+            print(
+                "  FAIL ath12k suspend: resume still boots the WCN. "
+                "That holds the panel off.",
+                file=sys.stderr,
+            )
+            return False
+        restored = kept
+        _write_if_changed(core, orig, restored)
+        print("  OK   ath12k s2idle leaves the WCN running (no firmware boot)",
+              file=sys.stderr)
+    return _wcn7860_stay_powered(src)
 
 
 def apply_mhi_host(src: Path) -> bool:
@@ -1022,7 +1419,7 @@ def main() -> int:
         ok &= apply_haptics_stop(src)
     if want_all or args.mhi:
         ok &= apply_ath12k_aspm(src)
-        ok &= apply_ath12k_s2ram(src)
+        ok &= apply_ath12k_s2ram(src, require_delay=want_all)
         ok &= apply_mhi_host(src)
     return 0 if ok else 1
 

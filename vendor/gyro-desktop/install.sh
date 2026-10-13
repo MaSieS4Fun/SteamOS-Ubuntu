@@ -78,13 +78,11 @@ if [[ -f "${REPO}/system_files/usr/bin/steamos-desktop-gamescope" ]]; then
   install -m 0755 "${REPO}/system_files/usr/bin/steamos-desktop-gamescope" \
     "$(path /usr/bin)/steamos-desktop-gamescope"
 fi
-if [[ -f "${REPO}/vendor/Desktop_gamemode/steambp.desktop" ]]; then
-  install -d "$(path /usr/local/share/applications)"
-  install -m 0644 "${REPO}/vendor/Desktop_gamemode/steambp.desktop" \
-    "$(path /usr/local/share/applications)/steambp.desktop"
-  rm -f "$(path /home/steam/Desktop)/steambp.desktop" \
-    "$(path /etc/skel/Desktop)/steambp.desktop" 2>/dev/null || true
-fi
+# Desktop Gaming Mode is not a Games-menu launcher. The desktop icon is
+# vendor/SteamARM/steambp.desktop, installed by scripts/install-desktop-gamemode.sh.
+rm -f "$(path /usr/local/share/applications)/steambp.desktop" \
+  "$(path /usr/share/applications)/steambp.desktop" \
+  2>/dev/null || true
 
 install -m 0644 "${ROOT}/packaging/xdg/autostart/gyro-desktop-plasma.desktop" \
   "$(path /etc/xdg/autostart)/gyro-desktop-plasma.desktop"

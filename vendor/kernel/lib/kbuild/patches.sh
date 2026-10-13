@@ -3,6 +3,8 @@ set -euo pipefail
 
 # shellcheck source=lib/kbuild/patches-72.sh
 source "${ROOT}/lib/kbuild/patches-72.sh"
+# shellcheck source=lib/kbuild/odin3.sh
+source "${ROOT}/lib/kbuild/odin3.sh"
 
 _patch_is_skipped() {
     local base="$1" deny_list="${2:-${PATCH_SKIP:-}}" deny pat
@@ -133,12 +135,13 @@ apply_armbian_patches() {
         apply_masi_thor_touch_dts "${src_dir}" || true
         apply_masi_gyro_fastrpc_dts "${src_dir}" || true
         apply_masi_kernel_patches "${src_dir}" || true
+        apply_odin3_board "${src_dir}" || return 1
         verify_masi_haptics_stack "${src_dir}" || return 1
         verify_masi_thor_touch_dts "${src_dir}" || return 1
         verify_masi_gyro_fastrpc_dts "${src_dir}" || return 1
         verify_masi_gmu_bw_vote_stack "${src_dir}" || return 1
         verify_masi_rsinput_suspend_stack "${src_dir}" || return 1
-        verify_masi_armada_energy_stack "${src_dir}" || return 1
+        verify_masi_energy_stack "${src_dir}" || return 1
         if _kernel_is_72_series "${kernel_ver}"; then
             bridge_72_fixup_compile_apis "${src_dir}" || return 1
             verify_sm8550_72_compile "${src_dir}" || return 1
@@ -195,19 +198,20 @@ apply_armbian_patches() {
     apply_masi_thor_touch_dts "${src_dir}" || failed=1
     apply_masi_gyro_fastrpc_dts "${src_dir}" || failed=1
     apply_masi_kernel_patches "${src_dir}" || failed=1
+    apply_odin3_board "${src_dir}" || failed=1
         verify_masi_thor_panel_reset "${src_dir}" || failed=1
         verify_masi_thor_touch_dts "${src_dir}" || failed=1
         verify_masi_gyro_fastrpc_dts "${src_dir}" || failed=1
         verify_masi_haptics_stack "${src_dir}" || failed=1
         verify_masi_suspend_stack "${src_dir}" || failed=1
-        verify_masi_armada_energy_stack "${src_dir}" || failed=1
+        verify_masi_energy_stack "${src_dir}" || failed=1
         _verify_masi_dtb_sources "${src_dir}" || failed=1
     # Remember MaSi verify result. The 7.2 Armbian-hunk bypass below must
     # not stamp a tree that is missing haptics, suspend, or the energy stack.
     local masi_verify_failed=0
     verify_masi_haptics_stack "${src_dir}" >/dev/null || masi_verify_failed=1
     verify_masi_suspend_stack "${src_dir}" >/dev/null || masi_verify_failed=1
-    verify_masi_armada_energy_stack "${src_dir}" >/dev/null || masi_verify_failed=1
+    verify_masi_energy_stack "${src_dir}" >/dev/null || masi_verify_failed=1
 
     if _kernel_is_72_series "${kernel_ver}"; then
         bridge_72_fixup_compile_apis "${src_dir}" || return 1
@@ -660,8 +664,14 @@ _masi_patch_content_present() {
 
     case "${base}" in
     1004-haptics-steam-ff-deadlock-fix.patch)
+        # SM8550 driver: brake poll cap. Odin 3 HAP530 driver already
+        # plays rumble from a workqueue, so this hunk does not apply.
         grep -q 'timeout = min_t(u32, timeout, 32)' \
-            "${src_dir}/drivers/input/misc/qcom-hv-haptics.c" 2>/dev/null
+            "${src_dir}/drivers/input/misc/qcom-hv-haptics.c" 2>/dev/null \
+            || { grep -q 'HAP530_HV = 0x5' \
+                    "${src_dir}/drivers/input/misc/qcom-hv-haptics.c" 2>/dev/null \
+                && grep -q 'global_playback_work' \
+                    "${src_dir}/drivers/input/misc/qcom-hv-haptics.c" 2>/dev/null; }
         ;;
     1008-scsi-ufs-qcom-propagate-hibern8-exit-failure-clk-scale.patch)
         grep -q 'err = ufshcd_uic_hibern8_exit(hba)' \
@@ -795,6 +805,44 @@ _masi_patch_content_present() {
         grep -q 'drv->vdd_off = true' \
             "${src_dir}/drivers/input/joystick/rsinput.c" 2>/dev/null
         ;;
+    1063-dpm-watchdog-persist-stuck-device.patch)
+        # 1064 rewrites the same function, so a second apply no longer
+        # reverses. The symbol is enough to know 1063 is already in the tree.
+        grep -q 'dpm_stuck_kthread' \
+            "${src_dir}/drivers/base/power/main.c" 2>/dev/null
+        ;;
+    1064-dpm-watchdog-sdam-stuck-device.patch)
+        grep -q 'SDAM tail write' \
+            "${src_dir}/drivers/base/power/main.c" 2>/dev/null
+        ;;
+    1065-drm-msm-a8xx-defer-gmu-resume.patch)
+        grep -q 'adreno_a8xx_deferred_resume' \
+            "${src_dir}/drivers/gpu/drm/msm/adreno/adreno_device.c" 2>/dev/null
+        ;;
+    1066-dpm-note-device-before-callback.patch)
+        grep -q 'dpm_stuck_note' \
+            "${src_dir}/drivers/base/power/main.c" 2>/dev/null
+        ;;
+    1067-input-rsinput-defer-resume.patch)
+        grep -q 'rsinput_resume_work_fn' \
+            "${src_dir}/drivers/input/joystick/rsinput.c" 2>/dev/null
+        ;;
+    1068-dpm-sdam-slot-hex.patch)
+        grep -q 'sdam-slot' \
+            "${src_dir}/drivers/base/power/main.c" 2>/dev/null
+        ;;
+    1069-ath12k-s2idle-keep-firmware.patch)
+        grep -q 'pm_suspend_target_state == PM_SUSPEND_TO_IDLE' \
+            "${src_dir}/drivers/net/wireless/ath/ath12k/core.c" 2>/dev/null
+        ;;
+    1070-ath12k-s2idle-leave-firmware.patch)
+        grep -q 'ath12k_ce_poll_paused' \
+            "${src_dir}/drivers/net/wireless/ath/ath12k/core.c" 2>/dev/null
+        ;;
+    1071-dpm-stop-per-device-sdam-note.patch)
+        grep -q 'SPMI from every callback' \
+            "${src_dir}/drivers/base/power/main.c" 2>/dev/null
+        ;;
     *)
         return 1
         ;;
@@ -856,7 +904,7 @@ _masi_apply_single_patch() {
     1050-thermal-qcom-tsens-mask-lower-irqs-across-suspend.patch|\
     1051-tty-serial-qcom-geni-mask-non-console-irq-on-suspend.patch|\
     1052-input-rsinput-quiesce-mcu-and-drop-vdd-on-suspend.patch)
-        ensure_masi_armada_energy "${src_dir}" && return 0
+        ensure_masi_energy_stack "${src_dir}" && return 0
         ;;
     1030-drm-msm-a6xx-hfi-retry-slow-gmu-bw-votes.patch)
         apply_masi_gmu_bw_hfi_bridge "${src_dir}" && return 0
@@ -1360,6 +1408,18 @@ apply_masi_kernel_patches() {
             skipped=$((skipped + 1))
             continue
         fi
+        # These boot the WCN from the resume thread. The panel stays black.
+        case "${base}" in
+        1056-ath12k-resume-retry-mhi.patch|\
+        1057-ath12k-resume-fbc-and-reinit.patch|\
+        1059-ath12k-resume-mission-before-qrtr.patch|\
+        1060-qrtr-mhi-wait-mission-mode.patch|\
+        1062-mhi-notify-clients-on-mission-mode.patch)
+            echo "  SKIP ${base} (firmware boot on resume holds the panel off)" >&2
+            skipped=$((skipped + 1))
+            continue
+            ;;
+        esac
         _masi_is_suspend_patch "${base}" && continue
         _masi_apply_one_masi_patch "${src_dir}" "${patch}"
         rc=$?
@@ -1410,8 +1470,8 @@ apply_masi_kernel_patches() {
     ensure_masi_compile3_log_quiet "${src_dir}" || failed=1
     ensure_masi_ath12k_ce_poll "${src_dir}" || failed=1
     ensure_masi_ufs_deep_pm "${src_dir}" || failed=1
-    ensure_masi_armada_energy "${src_dir}" || failed=1
-    verify_masi_armada_energy_stack "${src_dir}" || failed=1
+    ensure_masi_energy_stack "${src_dir}" || failed=1
+    verify_masi_energy_stack "${src_dir}" || failed=1
     [[ "${failed}" -eq 0 ]]
 }
 
@@ -1665,12 +1725,12 @@ PY
     return 1
 }
 
-# Armada SM8550 energy subset (PCIe L23/OPP, RPMH state-mem, TSENS LOWER,
+# SM8550 energy subset (PCIe L23/OPP, RPMH state-mem, TSENS LOWER,
 # GENI IRQ mask, rsinput MCU quiesce, sdhci IRQ mask).
 # Deep/S2RAM policy is unchanged.
-ensure_masi_armada_energy() {
+ensure_masi_energy_stack() {
     local src_dir="$1"
-    local py="${ROOT}/scripts/apply-masi-armada-energy.py"
+    local py="${ROOT}/scripts/apply-masi-energy.py"
 
     [[ -f "${py}" ]] || {
         echo "  FAIL missing ${py}" >&2
@@ -1683,10 +1743,10 @@ ensure_masi_armada_energy() {
     python3 "${py}" "${src_dir}"
 }
 
-verify_masi_armada_energy_stack() {
+verify_masi_energy_stack() {
     local src_dir="$1" failed=0
 
-    echo "==> Verify MaSi Armada SM8550 energy stack (1047–1052, 1054)" >&2
+    echo "==> Verify MaSi SM8550 energy stack (1047–1052, 1054)" >&2
     if grep -q 'pp->skip_l23_ready = true' \
             "${src_dir}/drivers/pci/controller/dwc/pcie-qcom.c" 2>/dev/null \
         && grep -q 'qcom_pcie_set_suspend_opp' \
@@ -1731,16 +1791,22 @@ verify_masi_armada_energy_stack() {
         echo "  FAIL missing 1052 rsinput MCU quiesce" >&2
         failed=1
     fi
-    if grep -q 'xhci-skip-phy-init-quirk\|dwc3_qcom_set_swnode' \
+    if grep -q 'dwc3_qcom_set_swnode' \
             "${src_dir}/drivers/usb/dwc3/dwc3-qcom.c" 2>/dev/null; then
-        echo "  FAIL unsafe retired 1053 DWC3 skip-phy still present" >&2
+        echo "  FAIL unsafe retired 1053 DWC3 software_node still present" >&2
+        failed=1
+    elif ! grep -q 'probe_data.properties.skip_phy_init = true' \
+            "${src_dir}/drivers/usb/dwc3/dwc3-qcom.c" 2>/dev/null \
+        || ! grep -q 'xhci-skip-phy-init-quirk' \
+            "${src_dir}/drivers/usb/dwc3/host.c" 2>/dev/null; then
+        echo "  FAIL missing DWC3 skip_phy_init on the xHCI child" >&2
         failed=1
     else
-        echo "  OK   retired 1053 DWC3 skip-phy absent" >&2
+        echo "  OK   DWC3 skip_phy_init on xHCI child (no software_node)" >&2
     fi
     if grep -q 'host->ier & SDHCI_INT_CARD_INT' \
             "${src_dir}/drivers/mmc/host/sdhci-msm.c" 2>/dev/null; then
-        echo "  OK   sdhci-msm IRQ mask in runtime suspend (1054 / Armada 0521)" >&2
+        echo "  OK   sdhci-msm IRQ mask in runtime suspend (1054)" >&2
     else
         echo "  FAIL missing 1054 sdhci IRQ mask" >&2
         failed=1
@@ -2721,9 +2787,10 @@ verify_masi_haptics_stack() {
     if grep -q 'EXPORT_SYMBOL_GPL(qcom_spmi_haptics_global_playback)' "${haptics}" \
         && grep -q 'static struct haptics_chip \*global_haptics' "${haptics}" \
         && grep -q 'EXPORT_SYMBOL_GPL(qcom_spmi_haptics_global_stop)' "${haptics}" \
+        && grep -q 'HAP530_HV = 0x5' "${haptics}" \
         && { grep -q 'mutex_lock(&global_ff_mutex)' "${haptics}" \
              || grep -q 'mutex_lock(&chip->global_ff_lock)' "${haptics}"; }; then
-        echo "  OK   qcom-hv-haptics exports mutex-safe global playback hooks" >&2
+        echo "  OK   qcom-hv-haptics exports mutex-safe global playback hooks (HAP530)" >&2
     else
         echo "  FAIL qcom-hv-haptics missing mutex-safe exported playback hooks" >&2
         failed=1
@@ -2897,6 +2964,7 @@ apply_gaming_config_tweaks() {
     [[ "${GAMING_TUNING:-1}" == "0" ]] && return 0
     apply_gaming_kconfig_overrides "${src_dir}"
     apply_ayn_family_kconfig "${src_dir}"
+    apply_odin3_kconfig "${src_dir}"
 }
 
 prepare_kernel_config() {

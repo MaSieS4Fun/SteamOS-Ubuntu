@@ -33,6 +33,10 @@ _run_explore.sh
 /*.deb
 /mesa bloquear.txt
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # OS / editor
 .DS_Store
 *.swp

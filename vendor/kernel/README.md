@@ -19,7 +19,7 @@ sudo ./update.sh                # on EACH device before reboot
 ./gui.sh                        # Easy Kernel Updater (GUI)
 ```
 
-Output: `output/<version>-edge-sm8550-kbase/` (or the suffix set in `config/`)
+Output: `output/<version>-edge-kbase/` (or the suffix set in `config/`)
 
 ## Why strict install
 
@@ -50,6 +50,7 @@ See [`docs/INTERNAL-UFS-BOOT.md`](docs/INTERNAL-UFS-BOOT.md).
 
 | Device | Extra |
 |--------|--------|
+| **AYN Odin 3** | Same `boot/KERNEL`. ABL → Set the Device → **AYN Odin 3** (slot 0). Speakers/HDMI: copy `ucm/` to `/usr/share/alsa/ucm2/` |
 | **AYN Thor** touch / dual panel | `output/.../fix-thor-screen/./fix-thor.sh` — [`docs/THOR-TOUCH.md`](docs/THOR-TOUCH.md) |
 | **Odin 2 / Thor** gyro userspace | External project **`giroscopio`** → `./install.sh` (kernel already ships FastRPC/SensorsPD + Thor ADSP firmware + `CONFIG_UHID`) — [`docs/GYRO.md`](docs/GYRO.md) |
 

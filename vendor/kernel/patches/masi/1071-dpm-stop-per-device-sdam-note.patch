@@ -1,0 +1,32 @@
+From: MaSi <noreply@masi.local>
+Subject: [PATCH] PM: stop tracing every device into the PMIC
+
+The per-callback SPMI write and serial resume stalled s2idle
+before the panel rails came back.
+
+---
+--- a/drivers/base/power/main.c
++++ b/drivers/base/power/main.c
+@@ -670,11 +670,9 @@
+ 
+ static void dpm_stuck_note(struct device *dev, char phase)
+ {
+-	if (!dpm_stuck_note_ready || !dpm_stuck_sdam_spare || !dev)
+-		return;
+-	scnprintf(dpm_stuck_msg, sizeof(dpm_stuck_msg), "%c %s %s",
+-		  phase, dev_driver_string(dev), dev_name(dev));
+-	dpm_stuck_sdam_store();
++	/* SPMI from every callback stalled s2idle before the panel rails. */
++	(void)dev;
++	(void)phase;
+ }
+ 
+ static bool dpm_stuck_slot_blank(const u8 *buf, unsigned int off, unsigned int len)
+@@ -825,7 +823,6 @@
+ static int __init dpm_stuck_init(void)
+ {
+ 	timer_setup(&dpm_stuck_panic_timer, dpm_stuck_panic_timer_fn, 0);
+-	pm_async_enabled = 0;
+ 	dpm_stuck_sdam_report();
+ 	dpm_stuck_task = kthread_run(dpm_stuck_kthread, NULL, "dpm-stuck");
+ 	if (IS_ERR(dpm_stuck_task))

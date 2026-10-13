@@ -163,7 +163,7 @@ if [[ -f "${SRC}/usr/bin/steamos-desktop-gamescope" ]]; then
   install -D -m 0755 "${SRC}/usr/bin/steamos-desktop-gamescope" \
     "${ROOTFS}/usr/bin/steamos-desktop-gamescope"
 fi
-for desk in steamos-gamemode.desktop steambp.desktop; do
+for desk in steamos-gamemode.desktop; do
   if [[ -f "${SRC}/usr/share/applications/${desk}" ]]; then
     install -D -m 0644 "${SRC}/usr/share/applications/${desk}" \
       "${ROOTFS}/usr/share/applications/${desk}"
@@ -434,9 +434,15 @@ if [[ -d "$STEAM_HOME" ]]; then
     "${STEAM_HOME}/Desktop/"*kubuntu* "${STEAM_HOME}/Desktop/"*Kubuntu* \
     "${STEAM_HOME}/Desktop/org.kfocus."* "${STEAM_HOME}/Desktop/org.kubuntu."* \
     2>/dev/null || true
-  # Desktop Gaming Mode stays in the app menu only (no Desktop icon).
-  rm -f "${STEAM_HOME}/Desktop/steambp.desktop" \
-    "${ROOTFS}/etc/skel/Desktop/steambp.desktop" 2>/dev/null || true
+  # Desktop Gaming Mode is not a menu entry. install-desktop-gamemode.sh
+  # places vendor/SteamARM/steambp.desktop on the Desktop afterwards.
+  rm -f "${ROOTFS}/usr/local/share/applications/steambp.desktop" \
+    "${ROOTFS}/usr/share/applications/steambp.desktop" \
+    2>/dev/null || true
+  if [[ -f "${ROOTFS}/etc/skel/Desktop/usage-notes.txt" ]]; then
+    install -m 0644 "${ROOTFS}/etc/skel/Desktop/usage-notes.txt" \
+      "${STEAM_HOME}/Desktop/usage-notes.txt"
+  fi
   if [[ -f "${ROOTFS}/usr/share/applications/steamos-gamemode.desktop" ]]; then
     cp -a "${ROOTFS}/usr/share/applications/steamos-gamemode.desktop" \
       "${STEAM_HOME}/Desktop/steamos-gamemode.desktop"
@@ -839,9 +845,9 @@ if [[ -x "${ROOT_DIR}/scripts/install-inputplumber.sh" ]]; then
   ln -sfn ../run/NetworkManager/resolv.conf "${ROOTFS}/etc/resolv.conf"
 fi
 
-# Desktop Gaming Mode (steambp + adapted steamos-session-select) — after Steam bake
+# Session select + SteamARM desktop icon (not a Games-menu launcher)
 if [[ -x "${ROOT_DIR}/scripts/install-desktop-gamemode.sh" ]]; then
-  log "Desktop Gaming Mode (vendor/Desktop_gamemode)"
+  log "Desktop icon steambp.desktop (vendor/SteamARM)"
   "${ROOT_DIR}/scripts/install-desktop-gamemode.sh" "$ROOTFS"
 fi
 

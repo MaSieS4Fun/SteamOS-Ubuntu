@@ -17,7 +17,7 @@ if [[ -d /proc/device-tree ]]; then
     compatible="$(read_dt_string /proc/device-tree/compatible 2>/dev/null || true)"
 fi
 
-echo "==> Device preflight (SM8550 kernel base)"
+echo "==> Device preflight (SM8550 / SM8750 kernel)"
 echo "  model:      ${model:-unknown}"
 echo "  compatible: ${compatible:-unknown}"
 echo ""
@@ -26,9 +26,8 @@ fail=0
 warn=0
 
 case "${compatible}" in
-    *qcom,sm8750*|*qcom,qcs8750*)
-        echo "  ERROR: Odin 3 / SM8750 — this kernel is SM8550 only." >&2
-        fail=1
+    *qcom,sm8750*|*qcom,qcs8750*|*qcom,cq8725s*)
+        echo "  OK   SoC: SM8750 / CQ8725S (AYN Odin 3)"
         ;;
     *qcom,sm8650*|*qcom,qcs8650*)
         echo "  ERROR: SM8650 device (Pocket FIT, Pocket S2, …) — NOT supported by this kernel." >&2
@@ -58,6 +57,7 @@ _hint() {
     fi
 }
 
+_hint "ayn,odin3"       "AYN Odin 3"        "0"
 _hint "ayn,odin2portal" "AYN Odin 2 Portal" "1"
 _hint "ayn,odin2mini"   "AYN Odin 2 Mini"   "3"
 _hint "ayn,odin2"       "AYN Odin 2"        "2"

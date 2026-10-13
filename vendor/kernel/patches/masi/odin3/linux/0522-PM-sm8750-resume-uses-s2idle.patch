@@ -1,0 +1,33 @@
+From: MaSi <masi@localhost>
+Subject: [PATCH] PM: keep SM8750 on s2idle when the cmdline asks for deep
+
+The shared ABL cmdline sets mem_sleep_default=deep for every device.
+SM8550 resumes from that path. SM8750 enters deep and does not resume.
+Only the default used by mem switches to s2idle on qcom,sm8750.
+
+--- a/kernel/power/suspend.c
++++ b/kernel/power/suspend.c
+@@ -31,6 +31,7 @@
+ #include <linux/compiler.h>
+ #include <linux/moduleparam.h>
+ #include <linux/fs.h>
++#include <linux/of.h>
+ 
+ #include "power.h"
+ 
+@@ -236,6 +237,15 @@
+ 		if (mem_sleep_default >= PM_SUSPEND_MEM)
+ 			mem_sleep_current = PM_SUSPEND_MEM;
+ 	}
++	/*
++	 * Shared cmdline requests deep. SM8750 does not resume from it.
++	 * s2idle still shows up as mem in /sys/power/state.
++	 */
++	if (of_machine_is_compatible("qcom,sm8750") &&
++	    mem_sleep_current == PM_SUSPEND_MEM) {
++		mem_sleep_current = PM_SUSPEND_TO_IDLE;
++		pr_info("SM8750: mem suspend is s2idle (deep does not resume)\n");
++	}
+ 
+ 	unlock_system_sleep(sleep_flags);
+ }

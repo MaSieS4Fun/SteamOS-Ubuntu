@@ -47,7 +47,7 @@ menus="${ROOTFS}/etc/xdg/menus/applications-merged"
 mkdir -p "${share_mesa}/scripts" "${bin}" "${apps}" "${icons}" "${dirs}" "${menus}"
 
 # ── MESA Easy Manager ─────────────────────────────────────────────────────────
-log "MESA Easy Manager → /usr/share/mesa-easy-manager"
+log "Graphic Drivers Manager → /usr/share/mesa-easy-manager"
 rm -rf "${share_mesa}"
 mkdir -p "${share_mesa}/scripts"
 cp -a "${VENDOR_MESA}/mesa_easy_manager" "${share_mesa}/"
@@ -71,7 +71,7 @@ chmod 0755 "${bin}/mesa-easy-manager"
 cat > "${apps}/mesa-easy-manager.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=MESA Easy Manager
+Name=Graphic Drivers Manager
 GenericName=Mesa Freedreno Vulkan Manager
 Comment=Switch Freedreno Vulkan (libvulkan_freedreno.so) on Adreno GPUs
 Exec=mesa-easy-manager

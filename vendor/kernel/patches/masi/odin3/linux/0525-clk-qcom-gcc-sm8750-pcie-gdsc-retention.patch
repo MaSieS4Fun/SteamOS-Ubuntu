@@ -1,0 +1,27 @@
+From: MaSi <masi@localhost>
+Subject: [PATCH] clk: qcom: gcc-sm8750: keep PCIe GDSCs in retention
+
+PWRSTS_OFF_ON turns the PCIe GDSCs off in gdsc_disable() during system
+suspend. The controller then does not come back and the power key does
+not resume the device. Retention lets the hardware drop the domain with
+the parent power rail and turn it on again at resume.
+
+--- a/drivers/clk/qcom/gcc-sm8750.c
++++ b/drivers/clk/qcom/gcc-sm8750.c
+@@ -2890,7 +2890,7 @@
+ 	.pd = {
+ 		.name = "gcc_pcie_0_gdsc",
+ 	},
+-	.pwrsts = PWRSTS_OFF_ON,
++	.pwrsts = PWRSTS_RET_ON,
+ 	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | VOTABLE,
+ };
+ 
+@@ -2904,7 +2904,7 @@
+ 	.pd = {
+ 		.name = "gcc_pcie_0_phy_gdsc",
+ 	},
+-	.pwrsts = PWRSTS_OFF_ON,
++	.pwrsts = PWRSTS_RET_ON,
+ 	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | VOTABLE,
+ };

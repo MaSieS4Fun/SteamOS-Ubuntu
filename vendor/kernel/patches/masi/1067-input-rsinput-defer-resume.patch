@@ -1,0 +1,112 @@
+From: MaSi <noreply@masi.local>
+Subject: [PATCH] input: rsinput: bring the MCU back off the resume thread
+
+The resume callback runs with the device lock held. Powering the MCU
+and writing its UART from there is what the PMIC recorded as the stuck
+device. Queue that work and return.
+
+---
+--- a/drivers/input/joystick/rsinput.c
++++ b/drivers/input/joystick/rsinput.c
+@@ -20,6 +20,7 @@
+ #include <linux/serdev.h>
+ #include <linux/slab.h>
+ #include <linux/platform_device.h>
++#include <linux/workqueue.h>
+ #include <uapi/linux/sched/types.h>
+ 
+ static int update_params=0;
+@@ -141,8 +142,11 @@
+     bool invert_ry;
+     uint8_t rx_buf[1024];
+     uint8_t sequence_number;
++    struct work_struct resume_work;
+ };
+ 
++static void rsinput_resume_work_fn(struct work_struct *work);
++
+ static bool rumble_enable = true;
+ module_param(rumble_enable, bool, 0660);
+ 
+@@ -701,6 +705,8 @@
+     if (error)
+         return error;
+ 
++    INIT_WORK(&drv->resume_work, rsinput_resume_work_fn);
++
+     serdev_device_set_client_ops(serdev, &rsinput_rx_ops);
+ 
+     error = rsinput_init_commands(drv);
+@@ -715,6 +721,7 @@
+ static void rsinput_remove(struct serdev_device *serdev) {
+     struct rsinput_driver *drv = serdev_device_get_drvdata(serdev);
+ 
++    cancel_work_sync(&drv->resume_work);
+     serdev_device_close(serdev);
+     input_unregister_device(drv->input);
+     if (drv->enable_gpio)
+@@ -746,6 +753,7 @@
+ 	struct rsinput_driver *drv = dev_get_drvdata(dev);
+ 	int error;
+ 
++	cancel_work_sync(&drv->resume_work);
+ 	rsinput_rumble_cancel(NULL);
+ 	rsinput_report_sticks_centered(drv);
+ 
+@@ -773,30 +781,47 @@
+ 	return 0;
+ }
+ 
+-static int rsinput_resume(struct device *dev)
++/*
++ * device_resume() holds this device's lock for the whole callback. Powering
++ * the MCU and writing the UART from there stalls the resume thread: the rail
++ * is shared with the LED panel, the parent UART is already awake, and a
++ * session that has the gamepad open keeps the port and the input device busy.
++ * The PMIC record from a failed resume was this driver. Bring the MCU back
++ * only after the resume thread has moved on.
++ */
++static void rsinput_resume_work_fn(struct work_struct *work)
+ {
+-	struct rsinput_driver *drv = dev_get_drvdata(dev);
++	struct rsinput_driver *drv = container_of(work, struct rsinput_driver,
++						  resume_work);
+ 	int error;
+ 
+-	if (!drv)
+-		return 0;
+-
+ 	if (drv->vdd_off) {
+ 		error = regulator_enable(drv->vdd);
+ 		if (error) {
+-			dev_err(dev, "Failed to enable MCU supply: %d\n", error);
+-			return error;
++			dev_err(&drv->serdev->dev,
++				"Failed to enable MCU supply: %d\n", error);
++			return;
+ 		}
+ 		drv->vdd_off = false;
+ 	}
+ 
+-	/* MCU often needs a beat after rails return before UART commands stick. */
+ 	msleep(80);
+ 	error = rsinput_init_commands(drv);
+ 	if (error)
+-		dev_warn(dev, "rsinput resume init failed: %d\n", error);
++		dev_warn(&drv->serdev->dev, "rsinput resume init failed: %d\n",
++			 error);
+ 
+ 	rsinput_report_sticks_centered(drv);
++}
++
++static int rsinput_resume(struct device *dev)
++{
++	struct rsinput_driver *drv = dev_get_drvdata(dev);
++
++	if (!drv)
++		return 0;
++
++	queue_work(system_freezable_wq, &drv->resume_work);
+ 	return 0;
+ }
+ 

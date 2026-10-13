@@ -1,0 +1,47 @@
+From: MaSi <noreply@masi.local>
+Subject: [PATCH] ath12k: keep WCN firmware across s2idle
+
+Judge the suspend that is running, not mem_sleep. Powering the
+radio down made resume wait out a firmware boot that never
+finished, so the scan stayed dead.
+
+---
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -175,10 +175,16 @@
+ 	if (ret <= 0)
+ 		return ret;
+ 
+-	/* s2idle keeps the firmware loaded. M3 lets it wake.
+-	 * power_down boots it again and the panel stays black.
++	/* The suspend in progress is s2idle even when mem_sleep still says
++	 * deep: the cmdline asks for deep and SM8750 rewrites the actual
++	 * transition. pm_suspend_default_s2idle() follows mem_sleep, so it
++	 * stays false and this used to power the radio down. The next
++	 * callback then boots firmware on the resume thread, the CE poller
++	 * walks a dead ring, and WMI never comes back.
++	 * Keep the firmware in M3 and stop the poller until it is awake.
+ 	 */
+-	if (pm_suspend_default_s2idle()) {
++	ath12k_ce_poll_stop(ab);
++	if (pm_suspend_target_state == PM_SUSPEND_TO_IDLE) {
+ 		ath12k_s2idle_m3 = false;
+ 		ath12k_hif_irq_disable(ab);
+ 		ath12k_hif_ce_irq_disable(ab);
+@@ -210,7 +216,7 @@
+ 		return ret;
+ 
+ 	reinit_completion(&ab->restart_completed);
+-	if (pm_suspend_default_s2idle()) {
++	if (pm_suspend_target_state == PM_SUSPEND_TO_IDLE) {
+ 		if (ath12k_s2idle_m3) {
+ 			ath12k_s2idle_m3 = false;
+ 			ret = ath12k_hif_resume(ab);
+@@ -219,6 +225,7 @@
+ 		}
+ 		ath12k_hif_ce_irq_enable(ab);
+ 		ath12k_hif_irq_enable(ab);
++		ath12k_ce_poll_start(ab);
+ 		complete(&ab->restart_completed);
+ 		return 0;
+ 	}

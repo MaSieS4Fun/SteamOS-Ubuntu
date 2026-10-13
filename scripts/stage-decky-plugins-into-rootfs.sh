@@ -25,6 +25,15 @@ install -D -m 0755 "$SYNC" "${ROOTFS}/usr/libexec/steamos-ubuntu/sync-decky-bund
 for plugin in "${SRC}"/*; do
   [[ -d "$plugin" && -f "${plugin}/plugin.json" ]] || continue
   name="$(basename "$plugin")"
+  # In-tree SM8550-Power / SM8550-LED are not installed. Decky gets the
+  # upstream Hooandee releases extracted below.
+  case "$name" in
+    power-managment|color-leds)
+      log "Skip ${name} (replaced by Hooandee release)"
+      rm -rf "${DST}/${name}"
+      continue
+      ;;
+  esac
   target="${DST}/${name}"
   log "${name} → ${target}"
 
@@ -50,5 +59,29 @@ for plugin in "${SRC}"/*; do
     --exclude src \
     "${plugin}/" "$target/"
 done
+
+# Hooandee upstream releases (pinned):
+#   panel-de-control v0.67.1  Panel.de.Control.zip
+#   decky-colores     v0.31.0  Colores.zip
+UPSTREAM="${SRC}/upstream"
+install -d "$DST"
+extract_plugin_zip() {
+  local zip="$1" label="$2"
+  [[ -f "$zip" ]] || { echo "ERROR: missing ${zip}" >&2; exit 1; }
+  log "Extract ${label}"
+  python3 - "$zip" "$DST" <<'PY'
+import sys, zipfile
+zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])
+PY
+}
+extract_plugin_zip "${UPSTREAM}/Panel.de.Control.zip" "Panel de Control"
+extract_plugin_zip "${UPSTREAM}/Colores.zip" "Colores"
+[[ -f "${DST}/Panel de Control/plugin.json" ]] || { echo "ERROR: Panel de Control extract failed" >&2; exit 1; }
+[[ -f "${DST}/Colores/plugin.json" ]] || { echo "ERROR: Colores extract failed" >&2; exit 1; }
+if [[ -d "${DST}/Panel de Control/bin" ]]; then
+  chmod 0755 "${DST}/Panel de Control/bin/"* 2>/dev/null || true
+fi
+rm -rf "${DST}/power-managment" "${DST}/color-leds" \
+  "${DST}/SM8550-Power" "${DST}/SM8550-LED"
 
 log "Bundled plugins staged under /usr/share/steamos-ubuntu/decky-plugins/"

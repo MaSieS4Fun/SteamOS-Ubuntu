@@ -1,7 +1,7 @@
 From: MaSi <noreply@masi.local>
 Subject: [PATCH] PCI: qcom: SM8550 skip L23 poll and honour opp-suspend
 
-Armada 0512/0513. Skip PARF_LTSSM poll (hard wedge) and keep a DDR/LLCC
+Skip PARF_LTSSM poll (hard wedge) and keep a DDR/LLCC
 sleep-set vote via the DT suspend OPP on non-S2RAM.
 
 ---

@@ -4,7 +4,7 @@ Applied after the matching Armbian `sm8550-<major.minor>` patch set (live archiv
 
 | File | Purpose |
 |------|---------|
-| `1000-add-qcom-haptics-driver.patch` | Qualcomm HV haptics driver (`qcom-hv-haptics`) |
+| `1000-add-qcom-haptics-driver.patch` | Qualcomm HV haptics driver (`qcom-hv-haptics`). Odin 3 then replaces this file with `odin3/haptics/` so PMIH0108 (HAP530) probes |
 | `1002-haptics-driver-support-periodic-sine-and-fixes.patch` | Haptics sine/periodic + timing fixes |
 | `1003-rsinput-add-ff.patch` | Route gamepad FF to PMIC haptics (controller rumble) |
 | `1004-haptics-steam-ff-deadlock-fix.patch` | Safer HPWR brake poll + skip erase when idle |
@@ -12,15 +12,21 @@ Applied after the matching Armbian `sm8550-<major.minor>` patch set (live archiv
 | Thor touch (build hook + `fix-thor-screen/`) | `apply_masi_thor_touch_dts` in kernel; userspace via `output/.../fix-thor-screen/fix-thor.sh` — see `docs/THOR-TOUCH.md` |
 | `1024-input-edt-ft5x06-retain-power-in-suspend.patch` | Thor bottom FT5452: skip power-off on deep suspend without wake IRQ |
 | `1032-input-rsinput-suspend-resume-center-sticks.patch` | Center sticks + rumble cancel on suspend/resume |
-| `1047-PCI-qcom-sm8550-skip-l23-and-suspend-opp.patch` | SM8550: skip PCIe L23 poll; honour `opp-suspend` (Armada 0512/0513) |
-| `1048-arm64-dts-qcom-sm8550-add-a-pcie-suspend-opp.patch` | `pcie0` suspend OPP 1000 kBps DDR/LLCC floor (Armada 0520) |
-| `1049-regulator-qcom-rpmh-add-suspend-state-support.patch` | RPMH SLEEP/WAKE votes for `regulator-state-mem` (Armada 0523) |
-| `1050-thermal-qcom-tsens-mask-lower-irqs-across-suspend.patch` | Mask TSENS LOWER IRQs in prepare (Armada 0204) |
-| `1051-tty-serial-qcom-geni-mask-non-console-irq-on-suspend.patch` | Mask gamepad UART IRQ across suspend (Armada 1006) |
-| `1052-input-rsinput-quiesce-mcu-and-drop-vdd-on-suspend.patch` | Drop MCU enable/reset/VDD in suspend (Armada 1005/1007) |
-| `1053` (retired) | **Do not apply:** duplicate DWC3 `software_node` causes refcount underflow/UAF on USB role changes; upstream proposal was reverted |
-| `1054` (overlay) | sdhci-msm: mask controller IRQs while runtime suspended (Armada 0521; mmc0 IRQ storm) |
-| `1055` (overlay) | ath12k: force WCN7850 `power_down` on S2RAM when HW is not OFF (upper-right heat / hang) |
+| `1047-PCI-qcom-sm8550-skip-l23-and-suspend-opp.patch` | SM8550: skip PCIe L23 poll; honour `opp-suspend` |
+| `1048-arm64-dts-qcom-sm8550-add-a-pcie-suspend-opp.patch` | `pcie0` suspend OPP 1000 kBps DDR/LLCC floor |
+| `1049-regulator-qcom-rpmh-add-suspend-state-support.patch` | RPMH SLEEP/WAKE votes for `regulator-state-mem` |
+| `1050-thermal-qcom-tsens-mask-lower-irqs-across-suspend.patch` | Mask TSENS LOWER IRQs in prepare |
+| `1051-tty-serial-qcom-geni-mask-non-console-irq-on-suspend.patch` | Mask gamepad UART IRQ across suspend |
+| `1052-input-rsinput-quiesce-mcu-and-drop-vdd-on-suspend.patch` | Drop MCU enable/reset/VDD in suspend |
+| `1053` (retired) | **Do not apply.** The `software_node` on the DWC3 device duplicates sysfs and use-after-frees on dock unplug. Replaced in `apply-masi-energy.py` by `skip_phy_init` on the xHCI child |
+| `1054` (overlay) | sdhci-msm: mask controller IRQs while runtime suspended (mmc0 IRQ storm) |
+| `1055` (retired) | Do not boot the WCN from the resume thread. That holds the panel off or freezes the machine. Odin 3 keeps the endpoint out of D3cold and leaves the four PMU rails on |
+| `1056-ath12k-resume-retry-mhi.patch` | WCN resume: 3s MHI wait, one cold start, then reset_work so the screen is not held on a dead radio |
+| `1057-ath12k-resume-fbc-and-reinit.patch` | Reload WCN over FBC after resume returns, so the panel is not stuck in the MHI boot |
+| `1058-pmic-glink-altmode-dp-retimer-fallback.patch` | If the DP retimer rejects the dock pin, program a pin it accepts so HDMI can come up |
+| `1059-ath12k-resume-mission-before-qrtr.patch` | Reload the radio after resume returns. The reload itself starts three seconds later, once the panel is back |
+| `1060-qrtr-mhi-wait-mission-mode.patch` | Reopen IPCR after resume on its own workqueue. The resume thread only queues that open |
+| `1062-mhi-notify-clients-on-mission-mode.patch` | Tell bound MHI clients when the controller reaches mission mode |
 | `1014-drm-hdmi-audio-hw-params.patch` | DP/HDMI: call `msm_dp_audio_prepare` from hdmi-codec `hw_params` |
 | `1015-q6apm-dp-graph-start-on-trigger.patch` | DP/HDMI: defer `q6apm_graph_start` to PCM `trigger` |
 | `1025-misc-fastrpc-adsp-sensor-pd-and-legacy-ioctl.patch` | FastRPC SensorsPD routing + PDR + Qualcomm legacy ioctl (gyro) |
@@ -31,10 +37,11 @@ Applied after the matching Armbian `sm8550-<major.minor>` patch set (live archiv
 | `1013` | TSENS: skip uplow wake on all `qcom,sm8550` (PR #2954; was Thor-only) |
 | `qcs8550-ayn-haptics.dtsi.frag` | Device-tree nodes for `pm8550b` haptics (all AYN boards) |
 | `qcs8550-retroidpocket-rp6.dts` | Retroid Pocket 6 board DTS |
+| `odin3/` | AYN Odin 3 (SM8750) DTS + SoC patches. ABL slot 0. Slots 1–6 unchanged. `0522`/`0524` keep SM8750 on s2idle (the shared cmdline requests deep, and a power tap does not wake that path). The four WCN PMU rails stay on in the sleep set; turning them back on at resume hangs the SoC. `0525` leaves the PCIe GDSC in retention. `0523` clears a charger USB role across suspend |
 
 Patches `1006`–`1013` are the deep-suspend stack (ROCKNIX PR [#2952](https://github.com/ROCKNIX/distribution/pull/2952) / [#2954](https://github.com/ROCKNIX/distribution/pull/2954)). `1013` uses SoC-wide `qcom,sm8550` (not Thor-only). `1045`/`1046` are xiaodoudou UFS follow-ups (`recover-hibern8-enter-clk-gating`, `hold-clk-gating-across-system-pm`) needed so 7.2.8 does not hang in filesystem sync after a failed idle Hibern8 during suspend.
 
-`1047`–`1052` plus `1054` are the Armada SM8550 energy subset that is compatible with MaSi **deep/S2RAM** (not their s2idle/fake-suspend default): PCIe skip L23 + suspend OPP, RPMH `regulator-state-mem`, TSENS LOWER mask, GENI UART IRQ mask, rsinput MCU quiesce and sdhci IRQ mask. The former `1053` DWC3 skip-phy overlay is deliberately excluded: the managed software node duplicates the DWC3 core node and corrupts its lifetime during host/device role changes. `1055` is MaSi: ath12k otherwise skips `power_down` unless `ATH12K_HW_STATE_OFF`, so WCN7850 stays M0 across suspend. Interconnect QoS (`0122`) is **not** carried (GMU HFI timeouts). Re-fetch with `scripts/fetch-rocknix-suspend-patches.py` only for **missing** 1006–1013 files. Set `SUSPEND_DEEP_PATCHES=0` to skip.
+`1047`–`1052` plus `1054` are the SM8550 energy subset that stays compatible with MaSi **deep/S2RAM**: PCIe skip L23 + suspend OPP, RPMH `regulator-state-mem`, TSENS LOWER mask, GENI UART IRQ mask, rsinput MCU quiesce and sdhci IRQ mask. The former `1053` software_node is stripped. Host suspend still skips the extra xHCI PHY init, but the flag is a property of the xHCI child (`skip_phy_init`), which is the form Qualcomm sent after reverting the software_node. Do not boot the WCN from the resume thread: that holds the panel off or freezes the machine. On SM8750 the WCN7860 stays out of D3cold and its four PMU rails stay on across sleep (ARMADA, tested on Odin 3). Interconnect QoS (`0122`) is **not** carried (GMU HFI timeouts). Re-fetch with `scripts/fetch-rocknix-suspend-patches.py` only for **missing** 1006–1013 files. Set `SUSPEND_DEEP_PATCHES=0` to skip.
 
 **Apply order:** `1011` (QMP RX LineCfg) runs before `1009`/`1010` so `ufs-qcom.c` hunks still match linux-7.0. The vendored `1011` also anchors on `qmp_ufs_init_registers()` (upstream name) instead of downstream `qmp_ufs_init()`.
 

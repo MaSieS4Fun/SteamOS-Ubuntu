@@ -1,0 +1,95 @@
+From: MaSi <noreply@masi.local>
+Subject: [PATCH] drm/msm: boot the A830 GMU after system resume
+
+A compositor that left the Adreno 830 runtime-active makes
+pm_runtime_force_resume boot the GMU inside the system resume callback.
+That boot does not return and the panel stays black. Queue it on a
+freezable worker once the other devices are back. Bound the GMU coredump
+wait so a dump that never finishes cannot pin resume either.
+
+---
+--- a/drivers/gpu/drm/msm/adreno/adreno_device.c
++++ b/drivers/gpu/drm/msm/adreno/adreno_device.c
+@@ -6,6 +6,8 @@
+  * Copyright (c) 2014,2017 The Linux Foundation. All rights reserved.
+  */
+ 
++#include <linux/workqueue.h>
++
+ #include "adreno_gpu.h"
+ 
+ bool hang_debug = false;
+@@ -389,6 +391,18 @@ out:
+ 	return ret;
+ }
+ 
++static struct device *adreno_a8xx_defer_dev;
++
++static void adreno_a8xx_deferred_resume(struct work_struct *work)
++{
++	struct device *dev = adreno_a8xx_defer_dev;
++
++	if (dev)
++		pm_runtime_force_resume(dev);
++}
++
++static DECLARE_WORK(adreno_a8xx_resume_work, adreno_a8xx_deferred_resume);
++
+ static int adreno_system_resume(struct device *dev)
+ {
+ 	struct msm_gpu *gpu = dev_to_gpu(dev);
+@@ -397,6 +414,19 @@ static int adreno_system_resume(struct device *dev)
+ 		return 0;
+ 
+ 	resume_scheduler(gpu);
++
++	/*
++	 * A830 boots the GMU from this callback when a compositor left the
++	 * GPU runtime-active. That boot does not return and the panel stays
++	 * black. The worker runs after the other devices have resumed.
++	 */
++	if (adreno_is_a8xx(to_adreno_gpu(gpu)) &&
++	    dev->power.needs_force_resume) {
++		adreno_a8xx_defer_dev = dev;
++		queue_work(system_freezable_wq, &adreno_a8xx_resume_work);
++		return 0;
++	}
++
+ 	return pm_runtime_force_resume(dev);
+ }
+ 
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -441,6 +441,10 @@ int a6xx_gmu_set_oob(struct a6xx_gmu *gmu, enum a6xx_gmu_oob_state state)
+ 		/* We may timeout because the GMU is temporarily wedged from
+ 		 * pending faults from the GPU and we are taking a devcoredump.
+-		 * Wait until the MMU is resumed and try again.
++		 * Wait until the MMU is resumed and try again. A coredump that
++		 * never finishes must not pin system resume.
+ 		 */
+-		wait_for_completion(&a6xx_gpu->base.fault_coredump_done);
++		if (!wait_for_completion_timeout(&a6xx_gpu->base.fault_coredump_done, HZ)) {
++			ret = -ETIMEDOUT;
++			break;
++		}
+ 	} while (true);
+ 
+ 	if (ret)
+--- a/drivers/gpu/drm/msm/adreno/a6xx_hfi.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_hfi.c
+@@ -131,8 +131,12 @@ static int a6xx_hfi_wait_for_msg_interrupt(struct a6xx_gmu *gmu, u32 id, u32 seq)
+ 		if (!completion_done(&a6xx_gpu->base.fault_coredump_done)) {
+ 			/* We may timeout because the GMU is temporarily wedged from
+ 			 * pending faults from the GPU and we are taking a devcoredump.
+-			 * Wait until the MMU is resumed and try again.
++			 * Wait until the MMU is resumed and try again. A coredump
++			 * that never finishes must not pin system resume.
+ 			 */
+-			wait_for_completion(&a6xx_gpu->base.fault_coredump_done);
++			if (!wait_for_completion_timeout(&a6xx_gpu->base.fault_coredump_done, HZ)) {
++				ret = -ETIMEDOUT;
++				break;
++			}
+ 			continue;
+ 		}
+ 

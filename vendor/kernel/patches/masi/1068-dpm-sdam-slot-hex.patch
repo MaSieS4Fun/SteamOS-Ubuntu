@@ -1,0 +1,19 @@
+From: MaSi <noreply@masi.local>
+Subject: [PATCH] PM: hex-dump the SDAM slot after a stuck resume
+
+The text form stops at the first zero, so a surviving prefix hides the
+rest of the driver name.
+
+---
+--- a/drivers/base/power/main.c
++++ b/drivers/base/power/main.c
+@@ -755,6 +755,9 @@
+ 			return;
+ 		}
+ 		pr_emerg("previous DPM timeout: %s\n", buf + off + 2);
++		print_hex_dump(KERN_EMERG, "PM: sdam-slot ",
++			       DUMP_PREFIX_OFFSET, 16, 1,
++			       buf + off, len, true);
+ 		memset(buf + off, 0, len);
+ 		regmap_bulk_write(map, DPM_STUCK_SDAM_REG + off, buf + off, len);
+ 		return;

@@ -119,31 +119,29 @@ Extended detail: [`vendor/kernel/CREDITS.md`](vendor/kernel/CREDITS.md).
 
 Installation: `scripts/install-decky.sh`, `vendor/Decky/`, `system_files/usr/libexec/steamos-ubuntu/sync-decky-bundled-plugins.sh`.
 
-### Plugin: SM8550 Power (`power-managment/`)
+### Plugin: Panel de Control (Hooandee)
+
+The image bundles the upstream release [panel-de-control v0.67.1](https://github.com/Hooandee/panel-de-control/releases/tag/panel-de-control-v0.67.1) (`vendor/plug-ins-steamos-ubuntu/upstream/Panel.de.Control.zip`). Decky Loader installs it as **Panel de Control**. The in-tree `power-managment/` plugin (`SM8550-Power`) is not installed.
 
 | Source | URL | What we use | License |
 |--------|-----|-------------|---------|
-| **Hooandee / panel-de-control** | https://github.com/Hooandee/panel-de-control | **Primary design and feature reference** for the Decky power control panel (profiles, fan curves, battery/thermal UI, SM8550 handheld power management concepts). SteamOS-Ubuntu adapted and reimplemented this work for Qualcomm SM8550 sysfs, bundled image delivery, and plugin id **`SM8550-Power`**. | See upstream repo |
+| **Hooandee / panel-de-control** | https://github.com/Hooandee/panel-de-control | Upstream Decky plugin release bundled in the image | See upstream repo |
 | **SteamDeckHomebrew / decky-loader** | https://github.com/SteamDeckHomebrew/decky-loader | Decky API (`decky` Python module, `@decky/*` npm) | Decky upstream |
 | **Linux kernel / Armbian SM8550** | sysfs `devfreq`, `cpufreq`, thermal, runtime PM | CPU/GPU governors, fan control, UFS keepalive on QCM8550/QCS8550 | GPL-2.0 (kernel interfaces) |
 | **ROCKNIX / SM8550 community** | Handheld Qualcomm patterns | Typical sysfs layout (Odin 2, Thor, Portal, Retroid Pocket 6) | Community |
-| **SteamOS-Ubuntu (in-tree)** | `vendor/plug-ins-steamos-ubuntu/power-managment/` | Python backend `sm8550_power/*`, React/Rollup frontend | GPL-3.0-or-later (`package.json`) |
+| **SteamOS-Ubuntu (in-tree, not installed)** | `vendor/plug-ins-steamos-ubuntu/power-managment/` | Older SM8550-Power fork. Kept in the tree; the image does not install it. | GPL-3.0-or-later (`package.json`) |
 
-Features: Power Saver / Balanced / Performance / Gaming profiles, fan curves, thermal monitor, GPU clock cap via devfreq.
+### Plugin: Colores (Hooandee)
 
-Build: `./vendor/plug-ins-steamos-ubuntu/power-managment/build.sh`
-
-### Plugin: SM8550 LED (`color-leds/`)
+The image bundles the upstream release [decky-colores v0.31.0](https://github.com/Hooandee/decky-colores/releases/tag/decky-colores-v0.31.0) (`vendor/plug-ins-steamos-ubuntu/upstream/Colores.zip`). Decky Loader installs it as **Colores**. The in-tree `color-leds/` plugin (`SM8550-LED`) is not installed.
 
 | Source | URL | What we use | License |
 |--------|-----|-------------|---------|
-| **Hooandee / decky-colores** | https://github.com/Hooandee/decky-colores | **Primary design and feature reference** for handheld RGB LED Decky control (zones, effects, brightness, color presets). SteamOS-Ubuntu adapted this work for AYN SM8550 `pwm-leds-multicolor` sysfs and plugin id **`SM8550-LED`**. | See upstream repo |
+| **Hooandee / decky-colores** | https://github.com/Hooandee/decky-colores | Upstream Decky plugin release bundled in the image | See upstream repo |
 | **SteamDeckHomebrew / decky-loader** | https://github.com/SteamDeckHomebrew/decky-loader | Decky API | Decky upstream |
 | **Batocera Custom Qualcomm / batoled** | https://github.com/MaSieS4Fun/Batocera-Custom-Qualcomm-Builds | sysfs RGB via `/sys/class/leds/*` (`multi_intensity`, `brightness`) | Upstream Batocera |
 | **Linux LED class (pwm-leds-multicolor)** | Kernel sysfs | Zones: `left-joystick`, `left-side`, `right-joystick`, `right-side` | GPL-2.0 |
-| **SteamOS-Ubuntu (in-tree)** | `vendor/plug-ins-steamos-ubuntu/color-leds/` | Python backend `sm8550_led/*` | GPL-3.0-or-later (`package.json`) |
-
-Build: `./vendor/plug-ins-steamos-ubuntu/color-leds/build.sh`
+| **SteamOS-Ubuntu (in-tree, not installed)** | `vendor/plug-ins-steamos-ubuntu/color-leds/` | Older SM8550-LED fork. Kept in the tree; the image does not install it. | GPL-3.0-or-later (`package.json`) |
 
 ### Plugin: decky-lsfg-vk + LSFG snapshot
 
@@ -270,8 +268,8 @@ Device config: `scripts/install-steamos-ubuntu-apt-source.sh`, `system_files/etc
 | **ChimeraOS / CachyOS** | Gaming Mode ↔ desktop session switch |
 | **Armbian** | SM8550 kernel/firmware base |
 | **ProtonPlus (Vysp3r)** | Proton manager UI → Proton ARM Easy Manager |
-| **Hooandee / panel-de-control** | Power Decky plugin design reference |
-| **Hooandee / decky-colores** | RGB LED Decky plugin design reference |
+| **Hooandee / panel-de-control** | Bundled Decky plugin (Panel de Control) |
+| **Hooandee / decky-colores** | Bundled Decky plugin (Colores) |
 
 ---
 

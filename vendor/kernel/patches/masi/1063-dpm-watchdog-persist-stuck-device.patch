@@ -1,0 +1,108 @@
+From: MaSi <noreply@masi.local>
+Subject: [PATCH] PM: write the stuck device name to /boot before panic
+
+The PMIC boot path clears DDR, so the ramoops record of a DPM watchdog
+panic does not survive. A nofreeze thread writes the driver and device
+name to /boot/pm-stuck.txt (vfat, no journal) and then panics. A second
+timer still panics if that write never returns.
+
+---
+--- a/drivers/base/power/main.c
++++ b/drivers/base/power/main.c
+@@ -37,6 +37,8 @@
+ #include <linux/thermal.h>
+ #include <linux/timer.h>
+ #include <linux/nmi.h>
++#include <linux/fs.h>
++#include <linux/kthread.h>
+ 
+ #include "../base.h"
+ #include "power.h"
+@@ -584,6 +586,68 @@ static int __init dpm_watchdog_sysctl_init(void)
+ }
+ subsys_initcall(dpm_watchdog_sysctl_init);
+ 
++/*
++ * Qualcomm's boot path wipes DDR, so the panic text never reaches pstore.
++ * /boot is the vfat kernel partition; a nofreeze thread can append there
++ * once storage has resumed, which is before the devices that hang after
++ * the gamepad LEDs come back.
++ */
++static char dpm_stuck_msg[160];
++static DECLARE_WAIT_QUEUE_HEAD(dpm_stuck_wait);
++static int dpm_stuck_pending;
++static struct task_struct *dpm_stuck_task;
++static struct timer_list dpm_stuck_panic_timer;
++static atomic_t dpm_stuck_panicked = ATOMIC_INIT(0);
++
++static void dpm_stuck_do_panic(void)
++{
++	if (atomic_cmpxchg(&dpm_stuck_panicked, 0, 1) == 0)
++		panic("%s", dpm_stuck_msg);
++}
++
++static void dpm_stuck_panic_timer_fn(struct timer_list *unused)
++{
++	dpm_stuck_do_panic();
++}
++
++static int dpm_stuck_kthread(void *unused)
++{
++	for (;;) {
++		wait_event_interruptible(dpm_stuck_wait,
++			dpm_stuck_pending || kthread_should_stop());
++		if (kthread_should_stop())
++			break;
++
++		dpm_stuck_pending = 0;
++		{
++			struct file *f;
++			loff_t pos = 0;
++
++			f = filp_open("/boot/pm-stuck.txt",
++				      O_WRONLY | O_CREAT | O_TRUNC, 0644);
++			if (!IS_ERR(f)) {
++				kernel_write(f, dpm_stuck_msg,
++					     strlen(dpm_stuck_msg), &pos);
++				vfs_fsync(f, 1);
++				filp_close(f, NULL);
++			}
++		}
++		timer_delete_sync(&dpm_stuck_panic_timer);
++		dpm_stuck_do_panic();
++	}
++	return 0;
++}
++
++static int __init dpm_stuck_init(void)
++{
++	timer_setup(&dpm_stuck_panic_timer, dpm_stuck_panic_timer_fn, 0);
++	dpm_stuck_task = kthread_run(dpm_stuck_kthread, NULL, "dpm-stuck");
++	if (IS_ERR(dpm_stuck_task))
++		dpm_stuck_task = NULL;
++	return 0;
++}
++late_initcall(dpm_stuck_init);
++
+ /**
+  * dpm_watchdog_handler - Driver suspend / resume watchdog handler.
+  * @t: The timer that PM watchdog depends on.
+@@ -605,8 +669,16 @@ static void dpm_watchdog_handler(struct timer_list *t)
+ 		show_stack(wd->tsk, NULL, KERN_EMERG);
+ 		if (dpm_watchdog_all_cpu_backtrace)
+ 			trigger_allbutcpu_cpu_backtrace(this_cpu);
+-		panic("%s %s: unrecoverable failure\n",
+-			dev_driver_string(wd->dev), dev_name(wd->dev));
++		scnprintf(dpm_stuck_msg, sizeof(dpm_stuck_msg),
++			  "%s %s: unrecoverable failure\n",
++			  dev_driver_string(wd->dev), dev_name(wd->dev));
++		/*
++		 * The timer cannot sleep on vfat. The nofreeze thread writes
++		 * the name, then panics. If that write blocks, panic anyway.
++		 */
++		mod_timer(&dpm_stuck_panic_timer, jiffies + 5 * HZ);
++		dpm_stuck_pending = 1;
++		wake_up(&dpm_stuck_wait);
+ 	}
+ 
+ 	time_left = dpm_watchdog_timeout - dpm_watchdog_warning_timeout;

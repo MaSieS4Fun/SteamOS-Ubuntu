@@ -39,7 +39,7 @@ Versiones en `packaging/apt/channel.conf`.
 
 ```bash
 # 0) Kernel kbase must exist (embedded in the .deb — apt upgrade flashes it)
-cd vendor/kernel && KERNEL_VER=7.2.2 ./make.sh
+cd vendor/kernel && KERNEL_VER=7.2.10 ./make.sh
 cd ../..
 
 # 1) Clave de firma (una vez)
@@ -103,5 +103,6 @@ Kernel tras upgrade del paquete `masi-kernel-edge-sm8550`:
 ```bash
 sudo apt update && sudo apt upgrade   # postinst flashea el kernel embebido
 sudo reboot
-uname -r   # p. ej. 7.2.2-edge-sm8550
+uname -r   # 7.2.10-edge
+# The postinst repacks KERNEL with this card's root UUID.
 ```

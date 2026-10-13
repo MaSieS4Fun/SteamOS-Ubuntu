@@ -15,6 +15,10 @@ mkdir -p "${OUTPUT_DIR}"
 
 # shellcheck source=config/defaults.conf
 source "${ROOT}/config/defaults.conf"
+# This card's ext4 UUID, not the UUID baked into the published KERNEL.
+export MASI_PREFER_RUNNING_UUID=1
+export INSTALL_REPACK_KERNEL=1
+export INSTALL_STRICT=1
 # shellcheck source=lib/install.sh
 source "${ROOT}/lib/install.sh"
 

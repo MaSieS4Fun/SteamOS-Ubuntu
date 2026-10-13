@@ -1,0 +1,28 @@
+From: MaSi <noreply@masi.local>
+Subject: [PATCH] arm64: dts: qcom: sm8750: add a PCIe suspend OPP
+
+Give pcie0 a suspend-only OPP so pcie-qcom keeps a nonzero DDR/LLCC
+sleep-set contract. Same 1000 kBps floor as SM8550.
+MaSi already honours opp-suspend for every SoC in pcie-qcom.
+
+---
+--- a/arch/arm64/boot/dts/qcom/sm8750.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8750.dtsi
+@@ -5625,6 +5625,17 @@
+ 					opp-hz = /bits/ 64 <16000000>;
+ 					required-opps = <&rpmhpd_opp_nom>;
+ 					opp-peak-kBps = <1969000 1>;
+ 				};
++				
++				/*
++				 * Suspend-only. The synthetic opp-hz keeps link-speed
++				 * matching from selecting it.
++				 */
++				opp-suspend-1 {
++					opp-hz = /bits/ 64 <1>;
++					required-opps = <&rpmhpd_opp_low_svs>;
++					opp-peak-kBps = <1000 1>;
++					opp-suspend;
++				};
+ 
+ 			};

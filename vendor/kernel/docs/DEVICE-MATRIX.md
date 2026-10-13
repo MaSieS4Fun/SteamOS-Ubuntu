@@ -5,7 +5,7 @@ Rocknix-ABL / LinuxLoader picks `chain[device_index]`.
 
 | Slot | Device | SoC | Source |
 |------|--------|-----|--------|
-| 0 | AYN Odin 3 | SM8750 | reference blob (wrong SoC for this kernel) |
+| 0 | AYN Odin 3 | SM8750 | kbuild `cq8725s-ayn-odin3.dtb` |
 | 1 | AYN Odin 2 Portal | SM8550 | kbuild `qcs8550-ayn-odin2portal.dtb` |
 | 2 | AYN Odin 2 | SM8550 | kbuild `qcs8550-ayn-odin2.dtb` |
 | 3 | AYN Odin 2 Mini | SM8550 | **reference** `slot-03.dtb` (Odin 2 Mini reference; kbuild deferred — black-screen reports) |
@@ -18,6 +18,16 @@ Rocknix-ABL / LinuxLoader picks `chain[device_index]`.
 | 11 | AYANEO Pocket DS | SM8550 | reference `slot-11.dtb` |
 | 12 | AYANEO Pocket EVO | SM8550 | reference `slot-12.dtb` |
 | 13 | AYANEO Pocket S 2K | SM8550 | kbuild `qcs8550-ayaneo-pockets1.dtb` |
+
+## AYN Odin 3 (slot 0)
+
+Same `KERNEL` as the SM8550 handhelds. ROCKNIX-ABL → Set the Device → AYN Odin 3.
+
+Board tree: `patches/masi/odin3/` (CQ8725S). The SM8550 stack already
+covers gamepad rumble (`qcom-hv-haptics` + rsinput), HTR3212 stick LEDs, DP/HDMI
+`hw_params`, and deep suspend. Odin 3 adds the SM8750 DTB (haptics on PMIH0108,
+both HTR3212 LED controllers, DisplayPort DAI, suspend OPP) plus WCN7860 and
+Adreno 830. UCM for speakers and HDMI is staged as `ucm/`.
 
 ## AYANEO SM8550 bring-up notes
 

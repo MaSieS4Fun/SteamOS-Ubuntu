@@ -1,0 +1,169 @@
+From: MaSi <masi@localhost>
+Subject: [PATCH] net: qrtr: prepare IPCR when MHI reaches mission mode
+
+Preparing the channel from the resume thread holds the panel off. Keep
+the device bound, return success, and open the channel from its own
+workqueue once mission mode is reached. That workqueue is not the MHI
+state worker and not the event poller.
+
+--- a/net/qrtr/mhi.c
++++ b/net/qrtr/mhi.c
+@@ -6,14 +6,20 @@
+ #include <linux/mhi.h>
+ #include <linux/module.h>
+ #include <linux/skbuff.h>
++#include <linux/workqueue.h>
+ #include <net/sock.h>
+ 
+ #include "qrtr.h"
+ 
++static void qcom_mhi_qrtr_mission_work(struct work_struct *work);
++static struct workqueue_struct *qcom_mhi_qrtr_wq;
++
+ struct qrtr_mhi_dev {
+ 	struct qrtr_endpoint ep;
+ 	struct mhi_device *mhi_dev;
+ 	struct device *dev;
++	struct work_struct mission_work;
++	bool prepared;
+ };
+ 
+ /* From MHI to QRTR */
+@@ -119,6 +125,7 @@
+ 	qdev->mhi_dev = mhi_dev;
+ 	qdev->dev = &mhi_dev->dev;
+ 	qdev->ep.xmit = qcom_mhi_qrtr_send;
++	INIT_WORK(&qdev->mission_work, qcom_mhi_qrtr_mission_work);
+ 
+ 	dev_set_drvdata(&mhi_dev->dev, qdev);
+ 
+@@ -135,6 +142,8 @@
+ 	if (rc)
+ 		goto err_unregister;
+ 
++	qdev->prepared = true;
++
+ 	dev_dbg(qdev->dev, "Qualcomm MHI QRTR driver probed\n");
+ 
+ 	return 0;
+@@ -151,6 +160,7 @@
+ {
+ 	struct qrtr_mhi_dev *qdev = dev_get_drvdata(&mhi_dev->dev);
+ 
++	cancel_work_sync(&qdev->mission_work);
+ 	qrtr_endpoint_unregister(&qdev->ep);
+ 	mhi_unprepare_from_transfer(mhi_dev);
+ 	dev_set_drvdata(&mhi_dev->dev, NULL);
+@@ -165,6 +175,7 @@
+ static int __maybe_unused qcom_mhi_qrtr_pm_suspend_late(struct device *dev)
+ {
+ 	struct mhi_device *mhi_dev = container_of(dev, struct mhi_device, dev);
++	struct qrtr_mhi_dev *qdev = dev_get_drvdata(dev);
+ 	enum mhi_state state;
+ 
+ 	state = mhi_get_mhi_state(mhi_dev->mhi_cntrl);
+@@ -176,15 +187,70 @@
+ 		return 0;
+ 
+ 	mhi_unprepare_from_transfer(mhi_dev);
++	if (qdev)
++		qdev->prepared = false;
+ 
+ 	return 0;
+ }
+ 
++static int qcom_mhi_qrtr_prepare(struct qrtr_mhi_dev *qdev)
++{
++	struct mhi_device *mhi_dev = qdev->mhi_dev;
++	int rc;
++
++	if (qdev->prepared)
++		return 0;
++
++	rc = mhi_prepare_for_transfer(mhi_dev);
++	if (rc)
++		return rc;
++
++	rc = qcom_mhi_qrtr_queue_dl_buffers(mhi_dev);
++	if (rc) {
++		mhi_unprepare_from_transfer(mhi_dev);
++		return rc;
++	}
++
++	qdev->prepared = true;
++	return 0;
++}
++
++static void qcom_mhi_qrtr_mission_work(struct work_struct *work)
++{
++	struct qrtr_mhi_dev *qdev = container_of(work, struct qrtr_mhi_dev, mission_work);
++	int rc;
++
++	rc = qcom_mhi_qrtr_prepare(qdev);
++	if (rc && rc != -ENOTCONN)
++		dev_err(qdev->dev, "failed to prepare IPCR after mission mode %d\n", rc);
++}
++
++static void qcom_mhi_qrtr_status_cb(struct mhi_device *mhi_dev,
++				    enum mhi_callback cb)
++{
++	struct qrtr_mhi_dev *qdev = dev_get_drvdata(&mhi_dev->dev);
++
++	if (cb != MHI_CB_EE_MISSION_MODE || !qdev)
++		return;
++
++	/*
++	 * This runs on the MHI state worker, inside the mission-mode
++	 * transition. Preparing here never returns. system_wq is also the
++	 * event poller, so a work item there blocks that poller.
++	 */
++	if (!qcom_mhi_qrtr_wq) {
++		qcom_mhi_qrtr_wq = alloc_ordered_workqueue("qcom_mhi_qrtr", 0);
++		if (!qcom_mhi_qrtr_wq)
++			return;
++	}
++	queue_work(qcom_mhi_qrtr_wq, &qdev->mission_work);
++}
++
+ static int __maybe_unused qcom_mhi_qrtr_pm_resume_early(struct device *dev)
+ {
+ 	struct mhi_device *mhi_dev = container_of(dev, struct mhi_device, dev);
++	struct qrtr_mhi_dev *qdev = dev_get_drvdata(dev);
+ 	enum mhi_state state;
+-	int rc;
+ 
+ 	state = mhi_get_mhi_state(mhi_dev->mhi_cntrl);
+ 	/*
+@@ -195,13 +260,17 @@
+ 	if (state == MHI_STATE_M3)
+ 		return 0;
+ 
+-	rc = mhi_prepare_for_transfer(mhi_dev);
+-	if (rc) {
+-		dev_err(dev, "failed to prepare for autoqueue transfer %d\n", rc);
+-		return rc;
+-	}
+-
+-	return qcom_mhi_qrtr_queue_dl_buffers(mhi_dev);
++	/* Suspend closed IPCR. Reopen it here, off this thread. Preparing
++	 * inline holds the panel off. If the controller is still down,
++	 * prepare returns -ENOTCONN and mission mode opens it later.
++	 */
++	if (qdev) {
++		if (!qcom_mhi_qrtr_wq)
++			qcom_mhi_qrtr_wq = alloc_ordered_workqueue("qcom_mhi_qrtr", 0);
++		if (qcom_mhi_qrtr_wq)
++			queue_work(qcom_mhi_qrtr_wq, &qdev->mission_work);
++	}
++	return 0;
+ }
+ 
+ static const struct dev_pm_ops qcom_mhi_qrtr_pm_ops = {
+@@ -214,6 +276,7 @@
+ 	.remove = qcom_mhi_qrtr_remove,
+ 	.dl_xfer_cb = qcom_mhi_qrtr_dl_callback,
+ 	.ul_xfer_cb = qcom_mhi_qrtr_ul_callback,
++	.status_cb = qcom_mhi_qrtr_status_cb,
+ 	.id_table = qcom_mhi_qrtr_id_table,
+ 	.driver = {
+ 		.name = "qcom_mhi_qrtr",

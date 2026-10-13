@@ -1,7 +1,7 @@
 # Bundled Mesa patches (SM8550 tree)
 
-All files here are applied **offline** for **SM8550** (and shared sync/UBO
-pieces for **SM8750**). Nothing is fetched from GitHub at compile time.
+These files are part of the single offline patch set used for **SM8550**
+and **SM8750**. Nothing is fetched from GitHub at compile time.
 
 | File | Origin | Effect |
 | --- | --- | --- |

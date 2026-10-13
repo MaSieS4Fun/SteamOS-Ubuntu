@@ -1,0 +1,46 @@
+Perfil de audio del AYN Odin 3 (SM8750).
+Se instala encima de la imagen:
+
+  ucm2/          -> /usr/share/alsa/ucm2/
+  firmware/      -> /lib/firmware/
+  wireplumber/   -> /usr/share/wireplumber/
+  systemd/user/  -> /usr/lib/systemd/user/
+  scripts/wait-sm8750-audio -> /usr/libexec/audio-odin3/wait-sm8750-audio
+
+La tarjeta del kernel se llama SM8750-AYN. Por eso entra
+ucm2/conf.d/sm8750/SM8750-AYN.conf.
+
+Menú (PipeWire ACP):
+  Off
+    sin audio
+  HiFi quality Music. (DisplayPort, Speaker)
+    un solo volumen, HDMI/DP, PCM 3 (DISPLAY_PORT_RX_0)
+  Pro Audio
+    Speakers (PCM 0, aw883xx) y Minijack (PCM 1, wcd939x)
+    el PCM 3 de HDMI se oculta en wireplumber
+
+En reposo el perfil es Pro Audio. scripts/sm8750-audio-profile (la misma
+política que sm8550-prefer-speaker-sink) pasa a HiFi mientras el dock
+HDMI/DP está conectado y vuelve a Pro Audio al retirarlo.
+Odin 2 y Odin 3 comparten device.name alsa_card.platform-sound, y WirePlumber
+guarda el perfil con esa clave. El verbo de Odin 2 sigue siendo
+HiFi quality Music. (DisplayPort, Speaker). El de Odin 3 se llama HDMI.
+Las reglas y los helpers miran la tarjeta: SM8750-AYN o AYN-Odin2.
+El perfil guardado gana al de prioridad: sin dock, wait-sm8750-audio
+escribe pro-audio antes de que WirePlumber arranque. Si no, un HiFi
+guardado sin puerto cae en Off.
+Los mixers de altavoz y minijack se quedan en 1. HiFi no abre esos PCM.
+Apagarlos deja Pro Audio sin backend y la sesión sin dispositivos.
+
+El PCM 3 sale de firmware/qcom/sm8750/SM8750-AYN-tplg.bin (la de ARMADA,
+con MultiMedia4). Sin ese mixer el verbo HiFi no carga.
+
+WirePlumber sonda la tarjeta una sola vez. Si arranca antes de que el
+verbo HiFi abra, la sesión se queda en Off o solo Pro Audio.
+sm8750-audio-ready.service espera a que `alsaucm set _verb HiFi` funcione.
+
+Los ficheros de codecs/wcd939x hacen falta: el paquete del SM8550 solo trae wcd938x.
+rx-macro es el mismo enrutado de auriculares que ya usa el SM8550.
+lib/card-init.conf y lib/ctl-remap.conf los pone alsa-ucm; no van aquí.
+
+No uses ODIN3 Kernel/ucm/. Era solo el altavoz, de cuando el aparato no estaba a mano.

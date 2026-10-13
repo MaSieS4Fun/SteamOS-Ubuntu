@@ -1,0 +1,37 @@
+From: MaSi <masi@localhost>
+Subject: [PATCH] ath12k: reload the radio after resume has returned
+
+Booting firmware inside resume_early waits on the MHI worker and the
+system never comes back. Power the radio down so the SoC can idle, and
+reload it only after this callback has returned.
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -7,22 +7,14 @@
+ 		return ret;
+ 
+ 	/*
+-	 * s2idle left the radio up. Booting firmware here waits on the
+-	 * MHI worker from inside the PM callback and resume never returns.
++	 * Do not boot MHI inside this callback. The FBC download runs on
++	 * the MHI state worker, and the timeout path flushes that worker
++	 * while it is still the running work, so resume never returns and
++	 * the panel stays off. Reload the radio after the PM transition.
+ 	 */
+ 	reinit_completion(&ab->restart_completed);
+-	if (pm_suspend_default_s2idle()) {
+-		complete(&ab->restart_completed);
+-		return 0;
+-	}
+-	ret = ath12k_hif_power_up(ab);
+-	if (ret) {
+-		ath12k_warn(ab, "failed to power up hif during resume: %d\n", ret);
+-		complete(&ab->restart_completed);
+-		queue_work(ab->workqueue, &ab->reset_work);
+-		return 0;
+-	}
+-
++	complete(&ab->restart_completed);
++	queue_work(ab->workqueue, &ab->reset_work);
+ 	return 0;
+ }
+ EXPORT_SYMBOL(ath12k_core_resume_early);

@@ -146,6 +146,29 @@ else
         apt-get install -y --allow-downgrades --reinstall "${chroot_paths[@]}"
 fi
 
+# Cached .debs may still carry the old menu titles. Only the ARM-Manager
+# launcher names change; package ids and window titles stay as they are.
+rewrite_arm_menu_names() {
+    local apps="$1" f
+    [[ -d "$apps" ]] || return 0
+    for f in "${apps}/emukitarm.desktop" "${apps}/mesa-easy-manager.desktop"; do
+        [[ -f "$f" ]] || continue
+        case "$(basename "$f")" in
+            emukitarm.desktop)
+                sed -i 's/^Name=.*/Name=Emulators-Script/' "$f"
+                ;;
+            mesa-easy-manager.desktop)
+                sed -i 's/^Name=.*/Name=Graphic Drivers Manager/' "$f"
+                ;;
+        esac
+    done
+}
+if [[ "${LIVE}" -eq 1 ]]; then
+    rewrite_arm_menu_names /usr/share/applications
+else
+    rewrite_arm_menu_names "${ROOTFS}/usr/share/applications"
+fi
+
 log "Installed via apt:"
 if [[ "${LIVE}" -eq 1 ]]; then
     dpkg -l mesa-easy-manager easy-ufs-install proton-arm-easy-manager \

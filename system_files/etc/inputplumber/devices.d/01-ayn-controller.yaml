@@ -1,5 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/ShadowBlip/InputPlumber/main/rootfs/usr/share/inputplumber/schema/composite_device_v1.json
-# AYN Odin 3 (SM8550 rsinput) → deck-uhid.
+# AYN Odin 3 rsinput → deck-uhid only.
+# passthrough must stay false. If the raw pad stays visible, Steam sees a
+# second Xbox-style controller and the touch panel flips the glyph layout.
 version: 1
 kind: CompositeDevice
 name: AYN Layout
@@ -19,7 +21,7 @@ source_devices:
       phys_path: rsinput-gamepad/input0
       handler: event*
     capability_map_id: ayn_mcu
-    passthrough: true
+    passthrough: false
 
 options:
   auto_manage: true

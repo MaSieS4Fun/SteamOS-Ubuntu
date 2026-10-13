@@ -1,7 +1,7 @@
 From: MaSi <noreply@masi.local>
 Subject: [PATCH] thermal: qcom: tsens: mask lower threshold IRQs across suspend
 
-Armada 0204. Falling temps storm LOWER while zones are frozen.
+Falling temps storm LOWER while zones are frozen.
 
 ---
 --- a/drivers/thermal/qcom/tsens.c	2026-09-29 15:43:48.690001108 +0200

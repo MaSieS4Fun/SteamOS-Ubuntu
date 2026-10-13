@@ -50,7 +50,7 @@ while True:
             compatible = ",".join(compat[:4])
         off += length
     hint = compatible or "?"
-    for needle in ("ayn,odin2mini", "ayn,odin2portal", "ayn,odin2", "ayn,thor", "retroidpocket,rp6",
+    for needle in ("ayn,odin3", "ayn,odin2mini", "ayn,odin2portal", "ayn,odin2", "ayn,thor", "retroidpocket,rp6",
                    "ayaneo,pocketace", "ayaneo,pocketdmg", "ayaneo,pocketds", "ayaneo,pocketevo", "ayaneo,pocket-s1"):
         if needle in blob.decode("latin-1", errors="replace"):
             hint = needle
@@ -110,7 +110,7 @@ PY
         fi
     done
 
-    for needle in "ayn,odin2mini" "ayn,odin2portal" "ayn,odin2" "ayn,thor" "retroidpocket,rp6"         "ayaneo,pocketace" "ayaneo,pocketdmg" "ayaneo,pocketds" "ayaneo,pocketevo" "ayaneo,pocket-s1"; do
+    for needle in "ayn,odin3" "ayn,odin2mini" "ayn,odin2portal" "ayn,odin2" "ayn,thor" "retroidpocket,rp6"         "ayaneo,pocketace" "ayaneo,pocketdmg" "ayaneo,pocketds" "ayaneo,pocketevo" "ayaneo,pocket-s1"; do
         if ! list_dtb_chain_slots "${zimage}" | grep -qF "${needle}"; then
             echo "  MISSING compatible: ${needle}" >&2
             missing=1
@@ -126,6 +126,7 @@ PY
 verify_reference_chain_order() {
     local zimage="$1"
     local -a expect=(
+        "0:ayn,odin3"
         "1:ayn,odin2portal"
         "2:ayn,odin2"
         "3:ayn,odin2mini"

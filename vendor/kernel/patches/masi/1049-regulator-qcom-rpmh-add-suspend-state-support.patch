@@ -1,7 +1,7 @@
 From: MaSi <noreply@masi.local>
 Subject: [PATCH] regulator: qcom-rpmh: add suspend-state (SLEEP/WAKE TCS) support
 
-Armada 0523. Rails with regulator-state-mem can vote the RPMh SLEEP set.
+Rails with regulator-state-mem can vote the RPMh SLEEP set.
 
 ---
 --- a/drivers/regulator/qcom-rpmh-regulator.c	2026-09-29 15:43:48.687362337 +0200

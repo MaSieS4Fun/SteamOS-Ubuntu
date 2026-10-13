@@ -13,6 +13,9 @@ _firmware_sparse_paths() {
     cat <<'EOF'
 qcom/sm8550
 qcom/a740_sqe.fw
+qcom/gen80000_sqe.fw
+qcom/gen80000_gmu.bin
+qcom/gen80000_aqe.fw
 qcom/gmu_gen70200.bin
 qcom/vpu
 ath12k/WCN7850

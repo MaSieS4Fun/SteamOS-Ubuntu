@@ -1,0 +1,13 @@
+[Unit]
+Description=SM8750 Pro Audio, HiFi while the HDMI dock is connected
+After=pipewire.service wireplumber.service
+Wants=pipewire.service wireplumber.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/audio-odin3/sm8750-audio-profile --watch
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

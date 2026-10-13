@@ -29,15 +29,13 @@ as attribution only.
 
 When adding or updating a patch:
 
-- Place the `.patch` file under `mesa_easy_manager/patches/SM8550/` or
-  `SM8750/` and register it in `PLATFORM_PATCH_FILES` in
-  `mesa_easy_manager/rocknix.py`
+- Place the `.patch` file under `mesa_easy_manager/patches/` and register
+  it in `BUNDLED_PATCH_FILES` in `mesa_easy_manager/rocknix.py`
 - Update [docs/PATCH_SOURCES.md](docs/PATCH_SOURCES.md) and the README
   **Patch sources** section
 - Keep clear attribution (Batocera fork, ROCKNIX, or local WSI)
 
-Compile profiles (`Generic`, `SM8550`, `SM8750`) are defined in
-`mesa_easy_manager/rocknix.py` (`CompileProfile`) and the GTK flow in
+Compile asks whether to apply that single bundled set. The GTK flow is in
 `mesa_easy_manager/ui.py`.
 
 ## AppImage

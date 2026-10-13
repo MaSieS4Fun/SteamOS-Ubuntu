@@ -30,10 +30,10 @@ export CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-}"
 export SKIP_IMG="${SKIP_IMG:-0}"
 export SKIP_OCI_BUILD="${SKIP_OCI_BUILD:-0}"
 export SKIP_AUDIO="${SKIP_AUDIO:-0}"
-# Kernel pin — must match packaging/apt/channel.conf (KERNEL_VER there = full release, e.g. 7.2.2-edge-sm8550)
+# Kernel pin — must match packaging/apt/channel.conf (KERNEL_VER there = full release, e.g. 7.2.10-edge-sm8550)
 # shellcheck source=packaging/apt/channel.conf
 source "${ROOT}/packaging/apt/channel.conf"
-export KERNEL_RELEASE="${KERNEL_VER:-7.2.2-edge-sm8550}"
+export KERNEL_RELEASE="${KERNEL_VER:-7.2.10-edge-sm8550}"
 export KERNEL_VER="${KERNEL_RELEASE%%-edge-sm8550}"
 export PREFERRED_KERNEL_SERIES="${PREFERRED_KERNEL_SERIES:-${KERNEL_VER%%.*}}"
 export UI="${UI:-plain}"
@@ -60,7 +60,7 @@ Disk layout (GPT):
   p2 ext4  PARTLABEL=STORAGE  → rootfs (firmware from vendor/kernel only)
 
 Optional env:
-  KERNEL_VER=7.2.2   (base series for make.sh; release = ${KERNEL_VER}-edge-sm8550 from channel.conf)
+  KERNEL_VER=7.2.10   (base series for make.sh; release = ${KERNEL_VER}-edge-sm8550 from channel.conf)
   SKIP_AUDIO=1   SKIP_IMG=1   JOBS=N
   SKIP_HOST_DEPS=1    skip apt install of compile/podman packages
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Strip cont-splash / simple-framebuffer from AYN and Retroid DTBs (fixes
 # SM8550 dispcc blue screen on those panels).
-# AYANEO keeps splash_region. ROCKNIX and ARMADA boot the EVO with that
+# AYANEO keeps splash_region. ROCKNIX boots the EVO with that
 # reservation; deleting it drops the ABL logo and the panel stays black.
 # Do NOT strip mdss_mdp* — that left apps-SMMU translation faults on display SID
 # and is absent from the known-good Armbian 6.18.8 Odin 2 DTB path.

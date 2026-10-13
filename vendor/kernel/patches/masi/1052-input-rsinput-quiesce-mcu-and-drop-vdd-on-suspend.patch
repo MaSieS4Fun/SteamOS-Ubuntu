@@ -1,7 +1,7 @@
 From: MaSi <noreply@masi.local>
 Subject: [PATCH] input: rsinput: quiesce MCU and drop VDD across system sleep
 
-Armada 1005/1007 on top of MaSi 1032 stick centering.
+On top of MaSi 1032 stick centering.
 
 ---
 --- a/drivers/input/joystick/rsinput.c	2026-09-29 15:43:48.694389807 +0200

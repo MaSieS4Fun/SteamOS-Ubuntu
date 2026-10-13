@@ -88,9 +88,16 @@ if [[ -d "$STEAM_HOME" ]]; then
     "$STEAM_HOME/Desktop/"*kubuntu* "$STEAM_HOME/Desktop/"*Kubuntu* \
     "$STEAM_HOME/Desktop/org.kfocus."* "$STEAM_HOME/Desktop/org.kubuntu."* \
     2>/dev/null || true
-  rm -f "$STEAM_HOME/Desktop/steambp.desktop" \
-    /etc/skel/Desktop/steambp.desktop 2>/dev/null || true
-  for desk in steamos-gamemode.desktop steamos-gaming-mode.desktop; do
+  rm -f /usr/local/share/applications/steambp.desktop \
+    /usr/share/applications/steambp.desktop \
+    /usr/share/applications/steamos-gaming-mode.desktop \
+    "$STEAM_HOME/Desktop/steamos-gaming-mode.desktop" \
+    2>/dev/null || true
+  if [[ -f /etc/skel/Desktop/usage-notes.txt ]]; then
+    install -m 0644 /etc/skel/Desktop/usage-notes.txt \
+      "$STEAM_HOME/Desktop/usage-notes.txt"
+  fi
+  for desk in steamos-gamemode.desktop; do
     if [[ -f "/usr/share/applications/${desk}" ]]; then
       cp -a "/usr/share/applications/${desk}" "$STEAM_HOME/Desktop/${desk}"
       chmod 0755 "$STEAM_HOME/Desktop/${desk}" || true

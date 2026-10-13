@@ -51,11 +51,11 @@ fi
 if [[ -f "${ROOT_DIR}/packaging/apt/channel.conf" ]]; then
   # shellcheck source=packaging/apt/channel.conf
   source "${ROOT_DIR}/packaging/apt/channel.conf"
-  _kr="${KERNEL_VER:-7.2.2-edge-sm8550}"
+  _kr="${KERNEL_VER:-7.2.10-edge-sm8550}"
   export KERNEL_VER="${_kr%%-edge-sm8550}"
   export PREFERRED_KERNEL_SERIES="${PREFERRED_KERNEL_SERIES:-${KERNEL_VER%%.*}}"
 else
-  export KERNEL_VER="${KERNEL_VER:-7.2.2}"
+  export KERNEL_VER="${KERNEL_VER:-7.2.10}"
   export PREFERRED_KERNEL_SERIES="${PREFERRED_KERNEL_SERIES:-7.2}"
 fi
 export UI="${UI:-plain}"

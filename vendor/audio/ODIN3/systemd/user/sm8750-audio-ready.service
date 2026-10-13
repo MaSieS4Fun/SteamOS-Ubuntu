@@ -1,0 +1,12 @@
+[Unit]
+Description=Wait until the SM8750 audio graph is ready
+Before=wireplumber.service
+After=pipewire.socket pipewire.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/audio-odin3/wait-sm8750-audio
+RemainAfterExit=yes
+
+[Install]
+WantedBy=wireplumber.service

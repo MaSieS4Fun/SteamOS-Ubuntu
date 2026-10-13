@@ -3,7 +3,8 @@
 # ROCKNIX-ABL picks chain[index] for the stored device model. MaSi used the wrong
 # permutation (0=Odin2, 1=Mini, 2=Portal…) — reference uses:
 #   1=Portal, 2=Odin2, 3=Mini, 4=Thor, 5–6=RP6
-# Slot 0 = other SoC (Odin3) in reference; kept as reference blob for index alignment.
+# Slot 0 = AYN Odin 3 (SM8750). Same KERNEL Image; ABL "Set the Device" picks it.
+# Slots 1–6 stay Portal / Odin 2 / Mini / Thor / Pocket 6.
 # Slots 7–8 = SM8650 (KONKR Pocket FIT / AYANEO Pocket S2). Wrong SoC for this
 # kernel — keep the ROCKNIX reference blobs so ABL indices stay aligned.
 # SteamOS-ARM-Handhelds (hashtagbasit) targets that SM8650 family, not ACE/EVO.
@@ -14,7 +15,7 @@
 # Extract reference blobs once: ./scripts/extract-reference-dtb-chain.sh
 #
 # SLOT|SOURCE|FILE|DEVICE
-0|reference|slot-00.dtb|slot0-ref
+0|kbuild|cq8725s-ayn-odin3.dtb|odin3
 1|kbuild|qcs8550-ayn-odin2portal.dtb|portal
 2|kbuild|qcs8550-ayn-odin2.dtb|odin2
 # Mini: use the reference DTB (known-good panel/BL: xm91080g + odin2miniled).

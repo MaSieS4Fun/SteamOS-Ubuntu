@@ -71,6 +71,15 @@ fi
 log "Copy firmware/ → /usr/lib/firmware"
 rsync -a --delete "${BUILD}/firmware/" "${ROOTFS}/usr/lib/firmware/"
 
+# Kernel packs ship the speaker-only SM8750 topology. Without MultiMedia4
+# the HiFi (DisplayPort, Speaker) profile cannot be created.
+HDMI_TPLG="${ROOT_DIR}/vendor/audio/ODIN3/firmware/qcom/sm8750/SM8750-AYN-tplg.bin"
+if [[ -f "$HDMI_TPLG" ]]; then
+  install -D -m 0644 "$HDMI_TPLG" \
+    "${ROOTFS}/usr/lib/firmware/qcom/sm8750/SM8750-AYN-tplg.bin"
+  log "Odin 3 topology with HDMI PCM (MultiMedia4)"
+fi
+
 log "Clearing old modules under rootfs"
 ensure_real_dir "${ROOTFS}/usr/lib/modules"
 

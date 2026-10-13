@@ -1,4 +1,9 @@
-"""Load bundled Mesa patches per SoC profile (no network at compile time).
+"""Load bundled Mesa patches (no network at compile time).
+
+One patch set is used for SM8550 (Odin 2 / Adreno 740) and SM8750
+(Odin 3 / Adreno 830). The sync and UBO fixes are chip-agnostic. The
+A830 chip-id patch only adds device-table entries and does not change
+Adreno 740 behavior.
 
 All patches ship under mesa_easy_manager/patches/. Upstream attribution
 URLs are documentation-only; the original Batocera repo was removed and
@@ -9,7 +14,6 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 
 PATCHES_ROOT = Path(__file__).resolve().parent / "patches"
@@ -20,71 +24,22 @@ ROCKNIX_TREE = (
     "https://github.com/ROCKNIX/distribution/tree/next/"
     "projects/ROCKNIX/packages/graphics/mesa/patches"
 )
+BATOCERA_PATCHES_ROOT = "board/batocera/patches/mesa3d"
 
-DEFAULT_PLATFORM = "SM8550"
+# Apply order. Paths stay under their original SoC directories.
+BUNDLED_PATCH_FILES: tuple[str, ...] = (
+    "SM8550/001-fix-freedreno-vulkan.patch",
+    "SM8550/0001-freedreno-ir3-vulkan-disable-bindless-ubo-const-lowering.patch",
+    "SM8750/0001-add-a830-chip-id.patch",
+)
 
-# Ordered list of patch files relative to PATCHES_ROOT.
-PLATFORM_PATCH_FILES: dict[str, tuple[str, ...]] = {
-    "SM8550": (
-        "SM8550/001-fix-freedreno-vulkan.patch",
-        "SM8550/0001-freedreno-ir3-vulkan-disable-bindless-ubo-const-lowering.patch",
-    ),
-    "SM8750": (
-        "SM8550/001-fix-freedreno-vulkan.patch",
-        "SM8550/0001-freedreno-ir3-vulkan-disable-bindless-ubo-const-lowering.patch",
-        "SM8750/0001-add-a830-chip-id.patch",
-    ),
-}
+DEVICES = (
+    "Odin 2, Thor, R-Pocket 6 (SM8550 / Adreno 740) and "
+    "Odin 3 (SM8750 / Adreno 830)"
+)
 
-
-class CompileProfile(Enum):
-    GENERIC = "generic"
-    SM8550 = "SM8550"
-    SM8750 = "SM8750"
-
-
-PROFILE_LABELS = {
-    CompileProfile.GENERIC: "Generic (no device patches)",
-    CompileProfile.SM8550: "SM8550 (Odin 2, Thor, R-Pocket 6)",
-    CompileProfile.SM8750: "SM8750 (Odin 3)",
-}
-
-
-@dataclass(frozen=True)
-class PlatformSources:
-    platform: str
-    rocknix_url: str
-    batocera_url: str
-    batocera_root: str
-    devices: str
-    local_note: str = ""
-
-
-def platform_sources(platform: str) -> PlatformSources:
-    if platform == "SM8750":
-        devices = "Odin 3 (SM8750 / Adreno 830)"
-        batocera_root = "board/batocera/qualcomm/sm8750/patches/mesa3d"
-    else:
-        devices = "Odin 2, Thor, R-Pocket 6 (SM8550 / Adreno 740)"
-        batocera_root = "board/batocera/patches/mesa3d"
-    return PlatformSources(
-        platform=platform,
-        rocknix_url=f"{ROCKNIX_TREE}/{platform}",
-        batocera_url=f"{BATOCERA_FORK}/tree/main/{batocera_root}",
-        batocera_root=batocera_root,
-        devices=devices,
-        local_note=(
-            f"Bundled under mesa_easy_manager/patches/ "
-            f"({len(PLATFORM_PATCH_FILES.get(platform, ()))} files, offline)"
-        ),
-    )
-
-
-# Backwards-compatible module-level names.
-_default = platform_sources(DEFAULT_PLATFORM)
-ROCKNIX_PATCHES_URL = _default.rocknix_url
-BATOCERA_PATCHES_URL = _default.batocera_url
-BATOCERA_PATCHES_ROOT = _default.batocera_root
+ROCKNIX_PATCHES_URL = ROCKNIX_TREE
+BATOCERA_PATCHES_URL = f"{BATOCERA_FORK}/tree/main/{BATOCERA_PATCHES_ROOT}"
 PATCH_SOURCES_SUMMARY = (
     f"Local bundle: mesa_easy_manager/patches/\n"
     f"Attribution Batocera fork: {BATOCERA_FORK}\n"
@@ -92,12 +47,12 @@ PATCH_SOURCES_SUMMARY = (
 )
 
 
-def patch_sources_summary(platform: str) -> str:
-    src = platform_sources(platform)
+def patch_sources_summary() -> str:
     return (
-        f"Local:    {src.local_note}\n"
+        f"Local:    Bundled under mesa_easy_manager/patches/ "
+        f"({len(BUNDLED_PATCH_FILES)} files, offline)\n"
         f"Attrib.:  Batocera fork {BATOCERA_FORK}\n"
-        f"          ROCKNIX {src.rocknix_url}"
+        f"          ROCKNIX {ROCKNIX_TREE}"
     )
 
 
@@ -151,17 +106,13 @@ def _load_bundled_file(rel: str) -> MesaPatch:
     )
 
 
-def fetch_patches(platform: str = DEFAULT_PLATFORM) -> list[MesaPatch]:
+def fetch_patches() -> list[MesaPatch]:
     """
-    Return bundled patches for SM8550 or SM8750.
+    Return the bundled patch set for Odin 2 and Odin 3.
 
     No network access — files must exist under mesa_easy_manager/patches/.
     """
-    files = PLATFORM_PATCH_FILES.get(platform)
-    if not files:
-        raise PatchFetchError(f"Unsupported patch platform: {platform}")
-
-    patches = [_load_bundled_file(rel) for rel in files]
+    patches = [_load_bundled_file(rel) for rel in BUNDLED_PATCH_FILES]
     # Deduplicate by content (defensive).
     unique: list[MesaPatch] = []
     seen: set[str] = set()
@@ -171,7 +122,7 @@ def fetch_patches(platform: str = DEFAULT_PLATFORM) -> list[MesaPatch]:
         seen.add(patch.content_sha256)
         unique.append(patch)
     if not unique:
-        raise PatchFetchError(f"No bundled patches for {platform}")
+        raise PatchFetchError("No bundled patches")
     return unique
 
 
@@ -199,11 +150,11 @@ def summarize_patches(patches: list[MesaPatch]) -> str:
 
 
 # Stubs kept so older imports do not break; always empty / error offline.
-def fetch_rocknix_patches(platform: str = DEFAULT_PLATFORM) -> list[MesaPatch]:
+def fetch_rocknix_patches() -> list[MesaPatch]:
     return []
 
 
-def fetch_batocera_patches(platform: str = DEFAULT_PLATFORM) -> list[MesaPatch]:
+def fetch_batocera_patches() -> list[MesaPatch]:
     return []
 
 

@@ -1,0 +1,123 @@
+From: MaSi <noreply@masi.local>
+Subject: [PATCH] PM: record the device entered before a stuck resume
+
+The watchdog thread never got to write the stuck device: the canary
+was still in SDAM after the reboot. Note the driver and device name
+in the PMIC before each suspend and resume callback, in series.
+
+---
+--- a/drivers/base/power/main.c
++++ b/drivers/base/power/main.c
+@@ -605,6 +605,9 @@
+ static atomic_t dpm_stuck_panicked = ATOMIC_INIT(0);
+ static bool dpm_stuck_sdam_checked;
+ static bool dpm_stuck_sdam_spare;
++static bool dpm_stuck_note_ready;
++static struct device *dpm_stuck_pmic;
++extern int pm_async_enabled;
+ static unsigned int dpm_stuck_slot_off;
+ static unsigned int dpm_stuck_slot_len;
+ 
+@@ -656,11 +659,24 @@
+ 	of_node_put(np);
+ 	if (!pdev)
+ 		return NULL;
++	if (pdev->dev.parent && !dpm_stuck_pmic)
++		dpm_stuck_pmic = get_device(pdev->dev.parent);
+ 	map = dev_get_regmap(pdev->dev.parent, NULL);
+ 	put_device(&pdev->dev);
+ 	return map;
+ }
+ 
++static void dpm_stuck_sdam_store(void);
++
++static void dpm_stuck_note(struct device *dev, char phase)
++{
++	if (!dpm_stuck_note_ready || !dpm_stuck_sdam_spare || !dev)
++		return;
++	scnprintf(dpm_stuck_msg, sizeof(dpm_stuck_msg), "%c %s %s",
++		  phase, dev_driver_string(dev), dev_name(dev));
++	dpm_stuck_sdam_store();
++}
++
+ static bool dpm_stuck_slot_blank(const u8 *buf, unsigned int off, unsigned int len)
+ {
+ 	unsigned int i;
+@@ -733,6 +749,7 @@
+ 		dpm_stuck_slot_off = off;
+ 		dpm_stuck_slot_len = len;
+ 		dpm_stuck_sdam_spare = true;
++		dpm_stuck_note_ready = true;
+ 		if (!strncmp(buf + off + 2, "CANARY", 6)) {
+ 			pr_info("SDAM tail survived reset\n");
+ 			return;
+@@ -748,6 +765,7 @@
+ 		dpm_stuck_slot_off = DPM_STUCK_SDAM_TAIL;
+ 		dpm_stuck_slot_len = DPM_STUCK_SDAM_TAIL_LEN;
+ 		dpm_stuck_sdam_spare = true;
++		dpm_stuck_note_ready = true;
+ 		pr_info("SDAM tail write sticks\n");
+ 		return;
+ 	}
+@@ -756,6 +774,7 @@
+ 		dpm_stuck_slot_off = DPM_STUCK_SDAM_GAP;
+ 		dpm_stuck_slot_len = DPM_STUCK_SDAM_GAP_LEN;
+ 		dpm_stuck_sdam_spare = true;
++		dpm_stuck_note_ready = true;
+ 		pr_info("SDAM gap write sticks\n");
+ 		return;
+ 	}
+@@ -803,6 +822,7 @@
+ static int __init dpm_stuck_init(void)
+ {
+ 	timer_setup(&dpm_stuck_panic_timer, dpm_stuck_panic_timer_fn, 0);
++	pm_async_enabled = 0;
+ 	dpm_stuck_sdam_report();
+ 	dpm_stuck_task = kthread_run(dpm_stuck_kthread, NULL, "dpm-stuck");
+ 	if (IS_ERR(dpm_stuck_task))
+@@ -1233,7 +1253,11 @@
+ 	}
+ 
+ Run:
++	if (callback)
++		dpm_stuck_note(dev, 'E');
+ 	error = dpm_run_callback(callback, dev, state, info);
++	if (dev == dpm_stuck_pmic)
++		dpm_stuck_note_ready = true;
+ 
+ Skip:
+ 	dev->power.is_late_suspended = false;
+@@ -1410,7 +1434,11 @@
+ 	}
+ 
+  End:
++	if (callback)
++		dpm_stuck_note(dev, 'R');
+ 	error = dpm_run_callback(callback, dev, state, info);
++	if (dev == dpm_stuck_pmic)
++		dpm_stuck_note_ready = true;
+ 
+ 	device_unlock(dev);
+ 	dpm_watchdog_clear(&wd);
+@@ -1976,6 +2004,10 @@
+ 	}
+ 
+ Run:
++	if (dev == dpm_stuck_pmic)
++		dpm_stuck_note_ready = false;
++	else if (callback)
++		dpm_stuck_note(dev, 'L');
+ 	error = dpm_run_callback(callback, dev, state, info);
+ 	if (error) {
+ 		WRITE_ONCE(async_error, error);
+@@ -2257,6 +2289,10 @@
+ 		callback = pm_op(dev->driver->pm, state);
+ 	}
+ 
++	if (dev == dpm_stuck_pmic)
++		dpm_stuck_note_ready = false;
++	else if (callback)
++		dpm_stuck_note(dev, 'S');
+ 	error = dpm_run_callback(callback, dev, state, info);
+ 
+  End:

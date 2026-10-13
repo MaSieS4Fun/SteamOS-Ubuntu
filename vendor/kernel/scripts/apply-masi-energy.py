@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Idempotent Armada SM8550 energy/suspend helpers on linux-7.2.x.
+"""Idempotent SM8550 energy/suspend helpers on linux-7.2.x.
 
 Ports the subset that is compatible with MaSi deep (S2RAM) sleep:
 PCIe L23 skip + suspend OPP, RPMH regulator-state-mem, TSENS lower-IRQ
@@ -7,9 +7,10 @@ mask, GENI UART IRQ mask, rsinput MCU quiesce + VDD drop,
 sdhci-msm IRQ mask in runtime suspend (0521).
 
 Does not enable interconnect QoS, fake-suspend, or s2idle-as-default.
-The proposed DWC3 skip-phy software-node change (1053) is intentionally
-excluded: it causes a duplicate software_node, refcount underflow and
-use-after-free when the USB role changes.
+The DWC3 skip-phy software_node (1053) is stripped. The same quirk is
+applied on the xHCI child via dwc3_properties.skip_phy_init (Qualcomm
+v2, 2026-09-14). That lets the PHY drop during host suspend without a
+second software_node on the DWC3 device.
 """
 from __future__ import annotations
 
@@ -571,8 +572,89 @@ static int dwc3_qcom_set_swnode(struct device *dev)
     )
 
 
+def dwc3_qcom(text: str) -> tuple[str, bool]:
+    """PHY init stays with DWC3. The quirk is not a software_node on this device."""
+    text, ok = remove_dwc3_skip_phy(text)
+    if not ok:
+        return text, False
+    flag = "\tprobe_data.properties.skip_phy_init = true;\n"
+    needle = "\tprobe_data.properties = DWC3_DEFAULT_PROPERTIES;\n"
+    if flag in text:
+        return text, True
+    if needle not in text:
+        return text, False
+    text = text.replace(needle, needle + flag, 1)
+    return text, flag in text
+
+
+def dwc3_glue_h(text: str) -> tuple[str, bool]:
+    old = "\tunsigned needs_full_reinit:1;\n};\n"
+    new = (
+        "\tunsigned needs_full_reinit:1;\n"
+        "\tunsigned skip_phy_init:1;\n"
+        "};\n"
+    )
+    if "unsigned skip_phy_init:1;" in text:
+        return text, True
+    if old not in text:
+        return text, False
+    return text.replace(old, new, 1), True
+
+
+def dwc3_core_h(text: str) -> tuple[str, bool]:
+    old = "\tunsigned\t\tneeds_full_reinit:1;\n"
+    new = (
+        "\tunsigned\t\tneeds_full_reinit:1;\n"
+        "\tunsigned\t\tskip_phy_init:1;\n"
+    )
+    if "skip_phy_init:1;" in text:
+        return text, True
+    if old not in text:
+        return text, False
+    return text.replace(old, new, 1), True
+
+
+def dwc3_core_c(text: str) -> tuple[str, bool]:
+    old = (
+        "\tif (properties->needs_full_reinit)\n"
+        "\t\tdwc->needs_full_reinit = true;\n"
+    )
+    new = old + (
+        "\n"
+        "\tif (properties->skip_phy_init)\n"
+        "\t\tdwc->skip_phy_init = true;\n"
+    )
+    if "properties->skip_phy_init" in text:
+        return text, True
+    if old not in text:
+        return text, False
+    return text.replace(old, new, 1), True
+
+
+def dwc3_host_c(text: str) -> tuple[str, bool]:
+    text = text.replace(
+        "\tstruct property_entry\tprops[6];\n",
+        "\tstruct property_entry\tprops[8];\n",
+        1,
+    )
+    extra = (
+        "\tif (dwc->skip_phy_init)\n"
+        "\t\tprops[prop_idx++] = PROPERTY_ENTRY_BOOL(\"xhci-skip-phy-init-quirk\");\n"
+    )
+    if extra in text:
+        return text, "props[8]" in text
+    anchor = (
+        "\tif (dwc->usb2_lpm_disable)\n"
+        "\t\tprops[prop_idx++] = PROPERTY_ENTRY_BOOL(\"usb2-lpm-disable\");\n"
+    )
+    if anchor not in text or "props[8]" not in text:
+        return text, False
+    return text.replace(anchor, anchor + "\n" + extra, 1), True
+
+
 def sdhci_msm(text: str) -> tuple[str, bool]:
-    """Armada 0521: mask SDHCI IRQs while runtime suspended (mmc0 storm / CX)."""
+    """Mask SDHCI IRQs while runtime suspended (mmc0 storm / CX)."""
+    text = text.replace(", armada#274)", ")")
     if "host->ier & SDHCI_INT_CARD_INT" in text and "synchronize_hardirq(host->irq)" in text:
         return text, True
 
@@ -586,8 +668,8 @@ def sdhci_msm(text: str) -> tuple[str, bool]:
 	host->runtime_suspended = true;
 	/*
 	 * SDCC apps clk parks on always-on bi_tcxo, so the controller
-	 * keeps asserting status IRQs while runtime suspended (Odin 2:
-	 * 15-50 irq/s, armada#274). sdhci_irq() returns IRQ_NONE and
+	 * keeps asserting status IRQs while runtime suspended (Odin 2,
+	 * 15-50 irq/s). sdhci_irq() returns IRQ_NONE and
 	 * never acks. Mask enables; keep SDHCI_INT_CARD_INT for SDIO.
 	 */
 	sdhci_writel(host, host->ier & SDHCI_INT_CARD_INT, SDHCI_SIGNAL_ENABLE);
@@ -622,7 +704,15 @@ def sdhci_msm(text: str) -> tuple[str, bool]:
 
 def present(src: Path) -> bool:
     dwc3 = src / "drivers/usb/dwc3/dwc3-qcom.c"
-    if not dwc3.is_file() or "xhci-skip-phy-init-quirk" in dwc3.read_text():
+    host = src / "drivers/usb/dwc3/host.c"
+    if not dwc3.is_file() or not host.is_file():
+        return False
+    qcom = dwc3.read_text()
+    if "dwc3_qcom_set_swnode" in qcom or "xhci-skip-phy-init-quirk" in qcom:
+        return False
+    if "probe_data.properties.skip_phy_init = true;" not in qcom:
+        return False
+    if 'PROPERTY_ENTRY_BOOL("xhci-skip-phy-init-quirk")' not in host.read_text():
         return False
     checks = [
         (src / "drivers/pci/controller/dwc/pcie-qcom.c", "pp->skip_l23_ready = true"),
@@ -640,7 +730,7 @@ def present(src: Path) -> bool:
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("usage: apply-masi-armada-energy.py SRC_DIR", file=sys.stderr)
+        print("usage: apply-masi-energy.py SRC_DIR", file=sys.stderr)
         return 2
     src = Path(sys.argv[1])
     jobs = [
@@ -650,7 +740,11 @@ def main() -> int:
         (src / "drivers/thermal/qcom/tsens.c", tsens),
         (src / "drivers/tty/serial/qcom_geni_serial.c", geni_serial),
         (src / "drivers/input/joystick/rsinput.c", rsinput),
-        (src / "drivers/usb/dwc3/dwc3-qcom.c", remove_dwc3_skip_phy),
+        (src / "drivers/usb/dwc3/dwc3-qcom.c", dwc3_qcom),
+        (src / "drivers/usb/dwc3/glue.h", dwc3_glue_h),
+        (src / "drivers/usb/dwc3/core.h", dwc3_core_h),
+        (src / "drivers/usb/dwc3/core.c", dwc3_core_c),
+        (src / "drivers/usb/dwc3/host.c", dwc3_host_c),
         (src / "drivers/mmc/host/sdhci-msm.c", sdhci_msm),
     ]
     ok = True
@@ -662,7 +756,7 @@ def main() -> int:
     if not present(src):
         print("  FAIL energy stack verify", file=sys.stderr)
         return 1
-    print("  OK   Armada SM8550 energy stack", file=sys.stderr)
+    print("  OK   SM8550 energy stack", file=sys.stderr)
     return 0
 
 

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Desktop Gaming Mode
+Comment=Desktop Steam Gaming Mode
+Exec=QT_QPA_PLATFORM=xcb MANGOHUD_CONFIG=read_cfg MANGOHUD_CONFIGFILE=$HOME/.config/MangoHud/steam/MangoHud.conf MANGOHUD_PRESETSFILE=$HOME/.config/MangoHud/steam/presets.conf gamescope -e -f --mangoapp -- steam -steamdeck -steamos3 -gamepadui
+Icon=/home/steam/.local/share/Steam/public/steam_tray_48.tga
+Terminal=false
+Type=Application
+Categories=Game;
+StartupNotify=true

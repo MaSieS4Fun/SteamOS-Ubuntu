@@ -51,10 +51,32 @@ else
 fi
 
 shopt -s nullglob
+# Drop the old in-tree plugins before copying the Hooandee releases.
+for old in power-managment color-leds SM8550-Power SM8550-LED; do
+  if [[ -d "${DEST}/${old}" ]]; then
+    log "Removing ${old}"
+    rm -rf "${DEST}/${old}"
+  fi
+done
+for dir in "${DEST}"/*; do
+  [[ -f "${dir}/plugin.json" ]] || continue
+  if grep -qE '"name"[[:space:]]*:[[:space:]]*"SM8550-(Power|LED)"' "${dir}/plugin.json"; then
+    log "Removing replaced plugin $(basename "$dir")"
+    rm -rf "$dir"
+  fi
+done
+
 installed=0
 for src in "${BUNDLE_ROOT}"/*; do
   [[ -d "$src" && -f "${src}/plugin.json" ]] || continue
   name="$(basename "$src")"
+  case "$name" in
+    power-managment|color-leds|SM8550-Power|SM8550-LED) continue ;;
+  esac
+  if grep -qE '"name"[[:space:]]*:[[:space:]]*"SM8550-(Power|LED)"' "${src}/plugin.json"; then
+    log "Skip bundled ${name}"
+    continue
+  fi
   log "Installing ${name} → ${DEST}/${name}"
   mkdir -p "${DEST}/${name}"
   rsync -a --delete "${src}/" "${DEST}/${name}/"

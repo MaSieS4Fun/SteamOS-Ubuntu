@@ -5,6 +5,15 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Compile no longer asks for an SM8550 or SM8750 profile. One bundled patch
+  set (Batocera sync, ROCKNIX UBO, and A830 chip-id) is offered for both
+  Odin 2 and Odin 3. The A830 entries are additive and do not change
+  Adreno 740 behavior.
+
 ## [1.8.1] - 2026-08-10
 
 ### Removed

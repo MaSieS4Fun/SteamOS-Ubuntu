@@ -156,6 +156,7 @@ kbuild_main() {
     # shellcheck source=lib/fix-thor-screen.sh
     source "${ROOT}/lib/fix-thor-screen.sh"
     stage_fix_thor_screen "${BUILD_OUT_DIR}"
+    stage_odin3_ucm "${BUILD_OUT_DIR}"
 
     if [[ "${BUILD_BOOTIMG:-1}" == "1" ]]; then
         pack_bootimg_abl "${BUILD_OUT_DIR}" "${BUILD_RELEASE}" || exit 1
@@ -168,7 +169,7 @@ kbuild_main() {
     verify_build_output "${BUILD_OUT_DIR}" "${BUILD_RELEASE}" || exit 1
 
     log "DONE: ${BUILD_OUT_DIR}"
-    log "  boot:     ${BUILD_OUT_DIR}/boot/KERNEL"
+    log "  boot:     ${BUILD_OUT_DIR}/boot/KERNEL  (ABL; Odin 3 = slot 0)"
     log "  firmware: ${BUILD_OUT_DIR}/firmware/"
     log "  modules:  ${BUILD_OUT_DIR}/modules/${BUILD_RELEASE}/"
     log "  Thor fix: ${BUILD_OUT_DIR}/fix-thor-screen/fix-thor.sh  (manual, asks root)"

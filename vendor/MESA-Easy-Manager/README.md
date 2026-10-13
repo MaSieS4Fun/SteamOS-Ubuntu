@@ -20,13 +20,10 @@ Designed for Qualcomm handhelds such as the **AYN Odin 2 (SM8550 / Adreno 740)**
 - Always shows a top **devel** entry (Mesa git tip) with an instability warning
 - Warns when a new release is not yet stored under `~/MESA-Drivers/`
 - Compiles `libvulkan_freedreno.so` from the official Mesa archive (or git for devel) and stores it locally
-- Before each **Compile** / **Recompile**, choose a profile:
-  - **Generic** — stock Mesa, no device patches
-  - **SM8550** — Odin 2 / Thor / R-Pocket 6 (bundled offline patches; then ask apply or not)
-  - **SM8750** — Odin 3 (bundled offline patches; then ask apply or not)
-- SM8550 / SM8750 bundles include **Batocera sync** + **ROCKNIX UBO** only
-  (and A830 chip-id on SM8750). Local Wayland WSI / RPCS3 experiment patches
-  are **not** shipped.
+- Before each **Compile** / **Recompile**, choose whether to apply the bundled patches
+- One patch set covers **Odin 2 (SM8550 / Adreno 740)** and **Odin 3 (SM8750 / Adreno 830)**:
+  **Batocera sync** + **ROCKNIX UBO** + **A830 chip-id**
+- Local Wayland WSI / RPCS3 experiment patches are **not** shipped.
 - **Install** replaces the system library (password via Polkit / `pkexec`)
 - **Restore MESA system default** restores the original system library
 - No password prompt when opening the app — only when replacing the system library
@@ -39,10 +36,10 @@ All device patches are **bundled offline** under `mesa_easy_manager/patches/`
 (no GitHub download at compile time). Attribution links below are historical /
 mirrors only. Full detail: [docs/PATCH_SOURCES.md](docs/PATCH_SOURCES.md).
 
-| Profile | Bundled files |
+| Build | Bundled files |
 | --- | --- |
-| **SM8550** | Sync (Batocera) + UBO (ROCKNIX) + WSI `0004`–`0007` |
-| **SM8750** | Same + A830 chip-id |
+| **With patches** | Sync (Batocera) + UBO (ROCKNIX) + A830 chip-id |
+| **Without patches** | Stock Mesa |
 
 **Batocera mirror** (original repo deleted):  
 [MaSieS4Fun/Batocera-Custom-Qualcomm-Builds](https://github.com/MaSieS4Fun/Batocera-Custom-Qualcomm-Builds)
@@ -156,16 +153,13 @@ Restart Vulkan apps (or the session) after switching.
 
 ### Compile
 
-1. Choose a **compile profile**:
-   - **Generic** — stock Mesa, no device patches
-   - **SM8550** — Odin 2 / Thor / R-Pocket 6
-   - **SM8750** — Odin 3
-2. For **SM8550** / **SM8750**, the app loads **bundled offline patches** and asks whether to apply them.
-3. Downloads the official Mesa archive (`https://archive.mesa3d.org/mesa-<version>.tar.xz`), or shallow-clones Mesa git for **devel**
-4. Optionally applies the selected bundled patches (user choice)
-5. Configures a minimal Meson build (`-Dvulkan-drivers=freedreno`, `-Dfreedreno-kmds=msm`)
-6. Builds and stores `libvulkan_freedreno.so` under `~/MESA-Drivers/<version>/` (or `~/MESA-Drivers/devel/`)
-7. Deletes the temporary build directory under `~/.cache/mesa-easy-manager/build/`
+1. The app loads the **bundled offline patches** and asks whether to apply them.
+   The same set is used for Odin 2 and Odin 3.
+2. Downloads the official Mesa archive (`https://archive.mesa3d.org/mesa-<version>.tar.xz`), or shallow-clones Mesa git for **devel**
+3. Optionally applies those bundled patches (user choice)
+4. Configures a minimal Meson build (`-Dvulkan-drivers=freedreno`, `-Dfreedreno-kmds=msm`)
+5. Builds and stores `libvulkan_freedreno.so` under `~/MESA-Drivers/<version>/` (or `~/MESA-Drivers/devel/`)
+6. Deletes the temporary build directory under `~/.cache/mesa-easy-manager/build/`
 
 ---
 

@@ -153,12 +153,22 @@ resolve_root_uuid() {
     ROOT_UUID_SOURCE=""
     RESOLVED_ROOT_UUID=""
 
-    # Explicit override (debug)
+    # Explicit override (image bake passes the new ext4 UUID here).
     if [[ -n "${ROOT_UUID:-}" ]]; then
         ROOT_UUID_SOURCE="ROOT_UUID override"
         RESOLVED_ROOT_UUID="${ROOT_UUID}"
         echo "${ROOT_UUID}"
         return 0
+    fi
+
+    # On apt upgrade / update.sh the KERNEL inside the package was built for
+    # another card. The running root filesystem is the UUID this device must
+    # keep. LinuxLoader.cfg and /boot/KERNEL are only fallbacks.
+    if [[ "${MASI_PREFER_RUNNING_UUID:-0}" == "1" ]]; then
+        if resolve_root_uuid_from_running_system >/dev/null 2>&1; then
+            echo "${RESOLVED_ROOT_UUID}"
+            return 0
+        fi
     fi
 
     if [[ -f "${cfg}" ]]; then
@@ -219,13 +229,14 @@ build_unified_abl_cmdline() {
         "clk_ignore_unused"
         "pd_ignore_unused"
     )
-    # Panel stays black until gamescope DRM; no console=tty0 (kernel spam on panel).
+    # console=tty0 keeps the panel lit. An OLED stays fully black with
+    # loglevel=0 and no framebuffer console, so a long boot looks powered off.
+    # loglevel=4 is warnings and errors, not the old debug flood.
     if [[ "${CMDLINE_QUIET:-1}" == "1" ]]; then
         parts+=(
-            "quiet"
-            "loglevel=0"
-            "systemd.show_status=0"
-            "systemd.log_level=err"
+            "console=tty0"
+            "loglevel=4"
+            "systemd.show_status=auto"
         )
     else
         parts+=("console=tty0")
@@ -307,6 +318,10 @@ _append_abl_cmdline_extras() {
             "fw_devlink=0"
         )
     fi
+
+    # After a stuck resume the PM watchdog panics. Reboot so the
+    # ramoops record is still in RAM for the next boot.
+    _parts+=("panic=10")
 
     if [[ "${SUSPEND_DEEP:-0}" == "1" ]]; then
         _parts+=(

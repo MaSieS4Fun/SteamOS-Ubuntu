@@ -19,6 +19,10 @@ mkdir -p "${OUTPUT_DIR}"
 # shellcheck source=config/defaults.conf
 source "${ROOT}/config/defaults.conf"
 [[ -f "${ROOT}/config/local.conf" ]] && source "${ROOT}/config/local.conf"
+# Each flashed card has its own root UUID. Never keep the bundle's UUID.
+export MASI_PREFER_RUNNING_UUID=1
+export INSTALL_REPACK_KERNEL=1
+export INSTALL_STRICT=1
 
 # shellcheck source=lib/install.sh
 source "${ROOT}/lib/install.sh"

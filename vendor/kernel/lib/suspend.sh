@@ -48,7 +48,29 @@ install_deep_suspend_config() {
     }
 
     if ! _suspend_device_allowed; then
-        echo "  deep-suspend: device not in PR#2954 validated set (Odin2/Mini/Portal/Thor/RP6)" >&2
+        # A shared image may already carry the SM8550 deep drop-in.
+        # On SM8750 that drop-in selects deep again after the kernel
+        # default, and the power key does not wake the device.
+        local id=""
+        if [[ -r /proc/device-tree/compatible ]]; then
+            id="$(tr '\0' ' ' </proc/device-tree/compatible 2>/dev/null || true)"
+        fi
+        id="${id} $(cat /sys/firmware/devicetree/base/model 2>/dev/null || true)"
+        if [[ "${id}" == *sm8750* || "${id}" == *odin3* || "${id}" == *"Odin 3"* ]]; then
+            mkdir -p /etc/systemd/sleep.conf.d /etc/systemd/logind.conf.d
+            rm -f /etc/systemd/sleep.conf.d/masi-deep-suspend.conf
+            install -m644 "${ROOT}/config/sleep/masi-s2idle-suspend.conf" \
+                /etc/systemd/sleep.conf.d/masi-s2idle-suspend.conf
+            install -m644 "${ROOT}/config/sleep/masi-logind-suspend.conf" \
+                /etc/systemd/logind.conf.d/masi-suspend.conf
+            if [[ -w /sys/power/mem_sleep ]]; then
+                echo s2idle > /sys/power/mem_sleep || true
+            fi
+            systemctl daemon-reload 2>/dev/null || true
+            echo "  suspend: SM8750 uses s2idle (deep does not wake)" >&2
+            return 0
+        fi
+        echo "  deep-suspend: device not in the validated set (Odin2/Mini/Portal/Thor/RP6)" >&2
         echo "  deep-suspend: kernel patches still applied; set SUSPEND_DEEP_ALL=1 to force userspace" >&2
         return 0
     fi

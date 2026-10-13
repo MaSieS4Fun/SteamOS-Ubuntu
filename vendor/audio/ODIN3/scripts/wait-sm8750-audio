@@ -1,0 +1,64 @@
+#!/bin/sh
+# Runs before WirePlumber. The card probe is once: if it happens while the
+# widgets are still unbound, the session keeps Off.
+# The profile restored from disk wins over the priority rule, so write it
+# here from the dock state. Otherwise a stored HiFi with no dock becomes Off.
+# Odin 2 is the same platform-sound card. Opening its HiFi verb from here
+# runs that verb's DisableSequence and mutes the speakers.
+i=0
+card_id=
+while [ "$i" -lt 80 ]; do
+	if [ -r /proc/asound/card0/id ]; then
+		card_id=$(cat /proc/asound/card0/id)
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.25
+done
+case "$card_id" in
+	SM8750*|sm8750*) ;;
+	*) exit 0 ;;
+esac
+
+i=0
+while [ "$i" -lt 80 ]; do
+	if alsaucm -c hw:0 set _verb HiFi >/dev/null 2>&1; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.25
+done
+
+if [ "$i" -eq 80 ]; then
+	echo "sm8750 HiFi verb was not ready after 20s" >&2
+fi
+
+# alsaucm runs the verb DisableSequence on exit. Put the speaker and
+# minijack routes back; Pro Audio opens those PCMs directly.
+amixer -c SM8750AYN cset "name=SECONDARY_MI2S_RX Audio Mixer MultiMedia1" 1 >/dev/null 2>&1
+amixer -c SM8750AYN cset "name=RX_CODEC_DMA_RX_0 Audio Mixer MultiMedia2" 1 >/dev/null 2>&1
+
+dp=off
+for f in /sys/class/drm/card*-DP-*/status /sys/class/drm/card*-HDMI-A-*/status; do
+	[ -r "$f" ] || continue
+	st=$(tr -d '[:space:]' < "$f")
+	if [ "$st" = "connected" ]; then
+		dp=on
+		break
+	fi
+done
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/wireplumber"
+mkdir -p "$state_dir"
+if [ "$dp" = "on" ]; then
+	amixer -c SM8750AYN cset "name=DISPLAY_PORT_RX_0 Audio Mixer MultiMedia4" 1 >/dev/null 2>&1
+	profile="HiFi"
+else
+	amixer -c SM8750AYN cset "name=DISPLAY_PORT_RX_0 Audio Mixer MultiMedia4" 0 >/dev/null 2>&1
+	profile=pro-audio
+fi
+printf '%s\n' '[default-profile]' "alsa_card.platform-sound=$profile" > "$state_dir/default-profile"
+
+# Let the verb close finish before WirePlumber opens the card.
+sleep 0.5
+exit 0

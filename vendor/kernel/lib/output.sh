@@ -69,6 +69,13 @@ AYN Thor / Odin 2 gyro userspace (external project; not in this bundle):
   cd ~/Projects/giroscopio && ./install.sh
   (kernel already includes FastRPC/SensorsPD DT + Thor ADSP firmware + CONFIG_UHID)
 
+AYN Odin 3: same boot/KERNEL. In ROCKNIX-ABL choose Set the Device → AYN Odin 3
+(slot 0). Portal / Odin 2 / Mini / Thor / Pocket 6 keep their slots.
+Copy ucm/ onto /usr/share/alsa/ucm2/ for speakers and HDMI audio.
+If the image has no qcom/sm8750 or ath12k/WCN7860 firmware, copy those
+from firmware/ as well. Adreno 830 also needs qcom/gen80000_sqe.fw,
+qcom/gen80000_gmu.bin and qcom/gen80000_aqe.fw under /usr/lib/firmware/qcom/.
+
 Internal UFS install: same boot/KERNEL → ROCKNIX partition (no second image; see docs/INTERNAL-UFS-BOOT.md)
 
 Reboot after install.

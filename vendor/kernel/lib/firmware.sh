@@ -70,6 +70,9 @@ prepare_firmware_masi() {
     # Overlay Rocknix/linux-firmware a740_sqe.fw (Armbian SQE causes RPCS3 glitches)
     firmware_overlay_rocknix_sqe "${fw_out}" || return 1
     firmware_overlay_wcn7850_7014 "${fw_out}" || return 1
+    if declare -F stage_odin3_firmware >/dev/null; then
+        stage_odin3_firmware "${fw_out}"
+    fi
 
     [[ "${n}" -gt 0 ]] || {
         echo "ERROR: empty firmware output" >&2

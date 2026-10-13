@@ -1,0 +1,40 @@
+From: MaSi <masi@localhost>
+Subject: [PATCH] pmic_glink_altmode: fall back when the DP retimer rejects the pin
+
+USB still enumerates when the announced DisplayPort pin is one the NB7
+retimer does not implement, and the external display stays dark. Retry
+with a pin that driver accepts.
+
+--- a/drivers/soc/qcom/pmic_glink_altmode.c
++++ b/drivers/soc/qcom/pmic_glink_altmode.c
+@@ -202,7 +202,29 @@ static void pmic_glink_altmode_enable_dp(struct pmic_glink_altmode *altmode,
+ 	port->retimer_state.mode = TYPEC_MODAL_STATE(mode);
+ 
+ 	ret = typec_retimer_set(port->typec_retimer, &port->retimer_state);
+-	if (ret)
++	if (ret == -EOPNOTSUPP) {
++		unsigned long fallback;
++
++		/*
++		 * Some docks advertise a pin the NB7 driver does not
++		 * implement. USB3 still enumerates; DP lanes stay dark.
++		 * Program a pin this retimer accepts: 2-lane beside USB3,
++		 * otherwise 4-lane.
++		 */
++		if (port->mux_ctrl == MUX_CTRL_STATE_USB3_DP)
++			fallback = TYPEC_DP_STATE_D;
++		else
++			fallback = TYPEC_DP_STATE_C;
++
++		dev_warn(altmode->dev,
++			 "retimer rejected DP mode %lu (mux %u), trying %lu\n",
++			 port->retimer_state.mode, port->mux_ctrl, fallback);
++		port->state.mode = fallback;
++		port->retimer_state.mode = fallback;
++		typec_mux_set(port->typec_mux, &port->state);
++		ret = typec_retimer_set(port->typec_retimer, &port->retimer_state);
++	}
++	if (ret)
+ 		dev_err(altmode->dev, "failed to setup retimer to DP: %d\n", ret);
+ }
+ 

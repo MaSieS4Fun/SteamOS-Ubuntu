@@ -1,0 +1,286 @@
+#!/usr/bin/env bash
+# Same policy as sm8550-prefer-speaker-sink:
+#   dock HDMI/DP connected    → HiFi quality Music. (DisplayPort, Speaker)
+#   dock disconnected         → Pro Audio (speakers + minijack)
+#   --watch                   → re-apply when the plug state flips
+#
+# Speaker and minijack are their own PCMs. Their mixers stay on.
+# Turning them off makes the next Pro Audio open fail
+# ("no backend DAIs") and the session is left with no devices.
+set +e
+LOG="${XDG_RUNTIME_DIR:-/tmp}/sm8750-audio-profile.log"
+exec >>"$LOG" 2>&1
+echo "===== $(date -Iseconds) uid=$(id -u) args=$* ====="
+
+POLL_SEC=1
+MODE=once
+case "${1:-}" in
+  --watch|-w) MODE=watch ;;
+  --once|"") MODE=once ;;
+  *) MODE=once ;;
+esac
+
+log() { echo "[$(date -Iseconds)] $*"; }
+
+# Odin 2 uses the same device.name (alsa_card.platform-sound) and its own helper.
+# Running here looks up a profile name that card does not have and restarts WirePlumber.
+card_id=$(cat /proc/asound/card0/id 2>/dev/null || true)
+if [[ -z "$card_id" ]]; then
+  for _ in $(seq 1 40); do
+    card_id=$(cat /proc/asound/card0/id 2>/dev/null || true)
+    [[ -n "$card_id" ]] && break
+    sleep 0.25
+  done
+fi
+case "$card_id" in
+  SM8750*|sm8750*) ;;
+  *)
+    log "card ${card_id:-none} is not SM8750; exit"
+    exit 0
+    ;;
+esac
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+
+STATE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/wireplumber/default-profile"
+
+jack_from_amixer() {
+  local name="$1" block
+  block=$(amixer -c SM8750AYN contents 2>/dev/null | awk -v n="$name" '
+    BEGIN{IGNORECASE=1}
+    $0 ~ "name='\''" n "'\''" { grab=1 }
+    grab { print }
+    grab && /values=/ { exit }
+  ')
+  echo "$block" | grep -qi 'values=on' && { echo on; return 0; }
+  echo "$block" | grep -qi 'values=off' && { echo off; return 0; }
+  echo unknown
+  return 1
+}
+
+dp_from_drm() {
+  local f st any=0
+  for f in /sys/class/drm/card*-DP-*/status /sys/class/drm/card*-HDMI-A-*/status; do
+    [[ -r "$f" ]] || continue
+    any=1
+    st=$(tr -d '[:space:]' < "$f")
+    [[ "$st" == "connected" ]] && { echo on; return 0; }
+  done
+  [[ "$any" -eq 1 ]] && { echo off; return 0; }
+  echo unknown
+  return 1
+}
+
+dp_connected() {
+  local d j
+  d=$(dp_from_drm)
+  [[ "$d" == "on" ]] && return 0
+  [[ "$d" == "off" ]] && return 1
+  j=$(jack_from_amixer "DP0 Jack")
+  [[ "$j" == "on" ]] && return 0
+  return 1
+}
+
+profile_ref() {
+  local name="$1"
+  pw-dump 2>/dev/null | python3 -c '
+import json, sys
+want = sys.argv[1]
+data = json.load(sys.stdin)
+for o in data:
+    props = o.get("info", {}).get("props", {})
+    if props.get("device.name") != "alsa_card.platform-sound":
+        continue
+    for p in o.get("info", {}).get("params", {}).get("EnumProfile", []):
+        if p.get("name") == want:
+            print(o["id"], p.get("index"))
+            sys.exit(0)
+sys.exit(1)
+' "$name"
+}
+
+sink_id() {
+  local pat="$1"
+  pw-dump 2>/dev/null | python3 -c '
+import json, sys, re
+pat = re.compile(sys.argv[1], re.I)
+data = json.load(sys.stdin)
+for o in data:
+    props = o.get("info", {}).get("props", {})
+    if props.get("media.class") != "Audio/Sink":
+        continue
+    if props.get("node.name") == "auto_null":
+        continue
+    blob = " ".join([
+        props.get("node.name") or "",
+        props.get("node.description") or "",
+    ])
+    if pat.search(blob):
+        print(o["id"])
+        sys.exit(0)
+sys.exit(1)
+' "$pat"
+}
+
+active_profile() {
+  pw-dump 2>/dev/null | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for o in data:
+    props = o.get("info", {}).get("props", {})
+    if props.get("device.name") != "alsa_card.platform-sound":
+        continue
+    for p in o.get("info", {}).get("params", {}).get("Profile", []):
+        print(p.get("name") or "")
+        sys.exit(0)
+'
+}
+
+write_profile() {
+  local name="$1"
+  mkdir -p "$(dirname "$STATE_FILE")"
+  printf '%s\n' '[default-profile]' "alsa_card.platform-sound=$name" > "$STATE_FILE"
+}
+
+set_profile() {
+  local name="$1" ref id idx after
+  after=$(active_profile)
+  if [[ "$after" == "$name" ]]; then
+    log "profile already $name"
+    return 0
+  fi
+  ref=$(profile_ref "$name") || return 1
+  id=${ref%% *}
+  idx=${ref##* }
+  log "wpctl set-profile $id $idx ($name)"
+  wpctl set-profile "$id" "$idx" || return 1
+  sleep 0.6
+  after=$(active_profile)
+  log "active now=$after"
+  [[ "$after" == "$name" ]]
+}
+
+set_default_sink() {
+  local id
+  id=$(sink_id "$1") || return 1
+  log "wpctl set-default $id ($1)"
+  wpctl set-default "$id"
+}
+
+# Speaker and minijack routes stay enabled. They are separate PCMs from HDMI.
+arm_routes() {
+  amixer -c SM8750AYN cset "name=SECONDARY_MI2S_RX Audio Mixer MultiMedia1" 1 >/dev/null 2>&1
+  amixer -c SM8750AYN cset "name=RX_CODEC_DMA_RX_0 Audio Mixer MultiMedia2" 1 >/dev/null 2>&1
+  case "$1" in
+    HDMI*|HiFi*)
+      amixer -c SM8750AYN cset "name=DISPLAY_PORT_RX_0 Audio Mixer MultiMedia4" 1 >/dev/null 2>&1
+      ;;
+    *)
+      amixer -c SM8750AYN cset "name=DISPLAY_PORT_RX_0 Audio Mixer MultiMedia4" 0 >/dev/null 2>&1
+      ;;
+  esac
+}
+
+# Same profile names Odin 2 uses. The verb comment is the menu text.
+hifi_profile_name() {
+  local c
+  for c in "HiFi" "HiFi (DisplayPort, Speaker)"; do
+    profile_ref "$c" >/dev/null && { echo "$c"; return 0; }
+  done
+  echo "HiFi"
+}
+
+wait_sink() {
+  local pat="$1" i
+  for i in $(seq 1 16); do
+    sink_id "$pat" >/dev/null && return 0
+    sleep 0.25
+  done
+  return 1
+}
+
+reprobe() {
+  local name="$1"
+  log "no sink for $name; restarting wireplumber"
+  systemctl --user stop wireplumber.service
+  write_profile "$name"
+  arm_routes "$name"
+  systemctl --user start wireplumber.service
+}
+
+apply_named() {
+  local name="$1" pat="$2"
+  if [[ "$(active_profile)" == "$name" ]] && sink_id "$pat" >/dev/null; then
+    set_default_sink "$pat" || true
+    return 0
+  fi
+  arm_routes "$name"
+  write_profile "$name"
+  set_profile "$name" || log "set_profile $name failed"
+  if wait_sink "$pat"; then
+    set_default_sink "$pat" || true
+    return 0
+  fi
+  reprobe "$name"
+  if wait_sink "$pat"; then
+    set_default_sink "$pat" || true
+    return 0
+  fi
+  log "sink still missing for $name ($pat)"
+  return 1
+}
+
+apply_hifi_dp() {
+  local name
+  name=$(hifi_profile_name)
+  log "DP/HDMI connected → $name"
+  apply_named "$name" 'DisplayPort|HDMI'
+}
+
+apply_pro_audio() {
+  log "DP/HDMI disconnected → Pro Audio"
+  apply_named pro-audio 'pro-output-0|Speakers'
+  sink_id 'pro-output-1|Minijack' >/dev/null || log "minijack sink missing"
+}
+
+apply_policy() {
+  if dp_connected; then
+    apply_hifi_dp
+  else
+    apply_pro_audio
+  fi
+}
+
+dp_state_key() {
+  if dp_connected; then echo on; else echo off; fi
+}
+
+for _ in $(seq 1 60); do
+  profile_ref pro-audio >/dev/null && break
+  sleep 0.5
+done
+
+apply_policy || log "initial apply_policy failed"
+
+if [[ "$MODE" != "watch" ]]; then
+  log "once mode done"
+  exit 0
+fi
+
+LAST_DP=$(dp_state_key)
+log "watch mode last_dp=$LAST_DP"
+while true; do
+  sleep "$POLL_SEC"
+  cur=$(dp_state_key)
+  if [[ "$cur" != "$LAST_DP" ]]; then
+    log "DP state flip: $LAST_DP -> $cur"
+    sleep 0.4
+    if apply_policy; then
+      LAST_DP=$(dp_state_key)
+    else
+      log "apply_policy failed after flip"
+      LAST_DP="$cur"
+    fi
+  fi
+done

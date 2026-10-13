@@ -31,12 +31,12 @@ from mesa_easy_manager.local_store import (
     local_version_set,
 )
 from mesa_easy_manager.rocknix import (
-    PROFILE_LABELS,
-    CompileProfile,
+    BATOCERA_FORK,
+    DEVICES,
+    ROCKNIX_TREE,
     RocknixPatch,
     fetch_patches,
     patch_sources_summary,
-    platform_sources,
     summarize_patches,
 )
 from mesa_easy_manager.versions import (
@@ -151,7 +151,9 @@ class MainWindow(Gtk.Window):
         self.connect("destroy", Gtk.main_quit)
         self.append_log(f"Welcome to {APP_NAME}. Sources: {MESA_NEWS_URL} / {RELNOTES_URL}")
         self.append_log(f"Devel tip: {MESA_GIT_URL}")
-        self.append_log("Compile profiles: Generic | SM8550 (Odin 2/Thor/R-Pocket 6) | SM8750 (Odin 3)")
+        self.append_log(
+            "Bundled patches (Odin 2 and Odin 3): Batocera sync + ROCKNIX UBO + A830 chip-id"
+        )
         self.refresh_async()
 
     # --- UI helpers -----------------------------------------------------
@@ -193,72 +195,37 @@ class MainWindow(Gtk.Window):
         dialog.destroy()
         return response == Gtk.ResponseType.OK
 
-    def ask_compile_profile(self, version: str) -> CompileProfile | None:
-        """Choose Generic / SM8550 / SM8750 before compile."""
-        dialog = Gtk.MessageDialog(
-            transient_for=self,
-            flags=0,
-            message_type=Gtk.MessageType.QUESTION,
-            buttons=Gtk.ButtonsType.NONE,
-            text=f"Compile profile for Mesa {version}",
-        )
-        dialog.format_secondary_text(
-            "Choose how to build this library:\n\n"
-            "• Generic — stock Mesa, no device patches (other devices may work).\n"
-            "• SM8550 — Odin 2 / Thor / R-Pocket 6 "
-            "(bundled offline patches: Batocera sync + ROCKNIX UBO).\n"
-            "• SM8750 — Odin 3 "
-            "(bundled offline patches: A830 + Batocera sync + ROCKNIX UBO).\n\n"
-            "For SM8550 / SM8750 you will next choose whether to apply patches.\n"
-            "Patches are shipped inside the app — nothing is downloaded from GitHub."
-        )
-        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
-        dialog.add_button("Generic", 100)
-        dialog.add_button("SM8550", 101)
-        dialog.add_button("SM8750", 102)
-        dialog.set_default_response(101)
-        response = dialog.run()
-        dialog.destroy()
-        if response == 100:
-            return CompileProfile.GENERIC
-        if response == 101:
-            return CompileProfile.SM8550
-        if response == 102:
-            return CompileProfile.SM8750
-        return None
-
     def ask_patch_choice(
         self,
         version: str,
-        platform: str,
         patches: list[RocknixPatch],
         *,
         recompile: bool,
     ) -> PatchChoice:
         action = "Recompile" if recompile else "Compile"
-        src = platform_sources(platform)
         dialog = Gtk.MessageDialog(
             transient_for=self,
             flags=0,
             message_type=Gtk.MessageType.WARNING,
             buttons=Gtk.ButtonsType.NONE,
-            text=f"{platform} patches for Mesa {version}",
+            text=f"Compile Mesa {version} applying patches?",
         )
         lines = [
-            f"Devices: {src.devices}",
+            f"Devices: {DEVICES}",
             "",
+            "The same patch set is used for Odin 2 and Odin 3.",
             "Patches are bundled offline under mesa_easy_manager/patches/",
             "(no GitHub download at compile time).",
             "",
             "Attribution (original authors / mirrors):",
-            f"  Batocera fork: {src.batocera_url}",
-            f"  ROCKNIX:       {src.rocknix_url}",
+            f"  Batocera fork: {BATOCERA_FORK}",
+            f"  ROCKNIX:       {ROCKNIX_TREE}",
             "",
             "Patches that will be applied:",
             summarize_patches(patches),
             "",
             "If you skip patches, Vulkan may fail or show graphical glitches",
-            "(on SM8550, vkcube often aborts without the Batocera sync fix).",
+            "(vkcube often aborts without the Batocera sync fix).",
             "If you apply patches, some games may still break — you can Recompile later.",
             "",
             "Note: this app installs libvulkan_freedreno.so only. For best Plasma",
@@ -415,7 +382,7 @@ class MainWindow(Gtk.Window):
         if row.local:
             recompile_btn = Gtk.Button(label="Recompile")
             recompile_btn.set_tooltip_text(
-                "Rebuild and choose profile / patches again"
+                "Rebuild and choose whether to apply patches again"
             )
             recompile_btn.connect("clicked", self._on_recompile, row.version)
             box.pack_end(recompile_btn, False, False, 0)
@@ -470,7 +437,13 @@ class MainWindow(Gtk.Window):
                 f"Stored as: ~/MESA-Drivers/{DEVEL_VERSION}/\n\n"
                 "Only use this if you want to test the latest upstream code."
             )
-            if not self.confirm(f"{action} Mesa devel (unstable)?", intro):
+            if not self.confirm(
+                f"{action} Mesa devel (unstable)?",
+                intro
+                + "\n\nNext you will choose whether to apply the bundled patches "
+                "(Batocera sync, ROCKNIX UBO, and A830 chip-id).\n"
+                "The same build works on Odin 2 (SM8550) and Odin 3 (SM8750).",
+            ):
                 return
         else:
             intro = (
@@ -485,40 +458,27 @@ class MainWindow(Gtk.Window):
             if not self.confirm(
                 f"{action} Mesa {version}?",
                 intro
-                + "\n\nNext you will choose a compile profile "
-                "(Generic / SM8550 / SM8750).\n"
+                + "\n\nNext you will choose whether to apply the bundled patches "
+                "(Batocera sync, ROCKNIX UBO, and A830 chip-id).\n"
+                "The same build works on Odin 2 (SM8550) and Odin 3 (SM8750).\n"
                 "The build may take a long time and needs build dependencies installed.",
             ):
                 return
 
-        profile = self.ask_compile_profile(version)
-        if profile is None:
-            self.append_log("Compile cancelled (no profile selected)")
-            return
-
-        self.append_log(f"Compile profile: {PROFILE_LABELS[profile]}")
-
-        if profile == CompileProfile.GENERIC:
-            self.set_busy(True)
-            self._run_compile(version, apply_patches=False, rocknix_patches=[])
-            return
-
-        platform = profile.value
         self.set_busy(True)
-        self.append_log(f"Loading bundled {platform} patches (offline)…")
+        self.append_log("Loading bundled patches (offline)…")
 
         def worker() -> None:
             patches: list[RocknixPatch] = []
             error: Exception | None = None
             try:
-                patches = fetch_patches(platform)
+                patches = fetch_patches()
             except Exception as exc:  # noqa: BLE001
                 error = exc
             GLib.idle_add(
                 self._on_patches_checked,
                 version,
                 recompile,
-                platform,
                 patches,
                 error,
             )
@@ -529,14 +489,13 @@ class MainWindow(Gtk.Window):
         self,
         version: str,
         recompile: bool,
-        platform: str,
         patches: list[RocknixPatch],
         error: Exception | None,
     ) -> bool:
         if error:
-            self.append_log(f"Could not fetch {platform} patches: {error}")
+            self.append_log(f"Could not load bundled patches: {error}")
             if not self.confirm(
-                f"Could not check {platform} patches",
+                "Could not check bundled patches",
                 f"{error}\n\nContinue compiling without patches?",
             ):
                 self.set_busy(False)
@@ -547,24 +506,22 @@ class MainWindow(Gtk.Window):
 
         if patches:
             self.append_log(
-                f"{platform} patches: {len(patches)} — "
+                f"Bundled patches: {len(patches)} — "
                 + ", ".join(p.label for p in patches)
             )
-            for line in patch_sources_summary(platform).splitlines():
+            for line in patch_sources_summary().splitlines():
                 self.append_log(f"  {line}")
-            choice = self.ask_patch_choice(
-                version, platform, patches, recompile=recompile
-            )
+            choice = self.ask_patch_choice(version, patches, recompile=recompile)
             if choice == PatchChoice.CANCEL:
                 self.append_log("Compile cancelled by user")
                 self.set_busy(False)
                 return False
             apply_patches = choice == PatchChoice.APPLY
         else:
-            self.append_log(f"No {platform} patch files listed")
+            self.append_log("No bundled patch files listed")
             if recompile and not self.confirm(
                 f"Recompile Mesa {version}?",
-                f"No {platform} patches are listed right now.\n"
+                "No bundled patches are listed right now.\n"
                 "Continue and compile without patches?",
             ):
                 self.set_busy(False)

@@ -179,9 +179,9 @@ if [[ -f "${ROOT_DIR}/scripts/install-decky.sh" ]]; then
     "${ROOTFS}/usr/bin/gamescope-session"
 fi
 
-# Desktop Gaming Mode from vendor (steambp + adapted steamos-session-select)
+# Session select + SteamARM desktop icon (not a Games-menu launcher)
 if [[ -x "${ROOT_DIR}/scripts/install-desktop-gamemode.sh" ]]; then
-  log "2c/6 Desktop Gaming Mode (vendor/Desktop_gamemode)"
+  log "2c/6 Desktop icon steambp.desktop (vendor/SteamARM)"
   "${ROOT_DIR}/scripts/install-desktop-gamemode.sh" "$ROOTFS"
 fi
 

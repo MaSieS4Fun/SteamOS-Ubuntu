@@ -1,38 +1,48 @@
 #!/usr/bin/env bash
-# Keep panel black/empty until gamescope takes DRM (no X11, no fbi, no Steam env changes).
+# Keep the panel obviously alive until gamescope takes DRM.
+# An OLED stays fully black if the console is cleared and printk is silenced.
 set +e
 
 MARKER="${PANEL_HOLD_MARKER:-/run/steamos-ubuntu/panel-hold.active}"
+TTY=/dev/tty1
 
-silence_kernel() {
-  dmesg --console-off 2>/dev/null || dmesg -D 2>/dev/null || true
-  [[ -w /proc/sys/kernel/printk ]] && echo "1 4 1 1" >/proc/sys/kernel/printk 2>/dev/null || true
-}
-
-clear_tty() {
-  local tty
-  for tty in /dev/tty1 /dev/tty0; do
-    [[ -e "$tty" && -w "$tty" ]] || continue
-    printf '\033[?25l\033[3J\033[2J\033[H' >"$tty" 2>/dev/null || true
+unblank() {
+  local bl max fb
+  printf '\033[9;0]\033[?25l' >"$TTY" 2>/dev/null || true
+  for fb in /sys/class/graphics/fb*/blank; do
+    [[ -w "$fb" ]] || continue
+    echo 0 >"$fb" 2>/dev/null || true
+  done
+  for bl in /sys/class/backlight/*/brightness; do
+    [[ -w "$bl" ]] || continue
+    max="${bl%/brightness}/max_brightness"
+    [[ -r "$max" ]] || continue
+    cat "$max" >"$bl" 2>/dev/null || true
   done
 }
 
+draw() {
+  local spin="$1"
+  unblank
+  printf '\033[2J\033[H\n\n\n      SteamOS-Ubuntu\n\n      Starting %s\n\n' "$spin" >"$TTY" 2>/dev/null || true
+}
+
 hold() {
+  local frames='|/-\' i=0
   mkdir -p /run/steamos-ubuntu 2>/dev/null || true
   chmod 0775 /run/steamos-ubuntu 2>/dev/null || true
   touch "$MARKER" 2>/dev/null || true
   chmod 0666 "$MARKER" 2>/dev/null || true
-  silence_kernel
-  clear_tty
+  [[ -w /proc/sys/kernel/printk ]] && echo "4 4 1 4" >/proc/sys/kernel/printk 2>/dev/null || true
   while [[ -f "$MARKER" ]]; do
-    clear_tty
-    sleep 0.2
+    draw "${frames:i++%4:1}"
+    sleep 0.4
   done
 }
 
 release() {
   rm -f "$MARKER" 2>/dev/null || true
-  clear_tty
+  printf '\033[?25h\033[2J\033[H' >"$TTY" 2>/dev/null || true
 }
 
 case "${1:-}" in

@@ -1,0 +1,24 @@
+From: MaSi <masi@localhost>
+Subject: [PATCH] usb: typec: ucsi: clear the USB role when the partner has no data
+
+pmic_glink on SM8750 does not set UCSI_USB4_IMPLIES_USB, so a charger
+kept a USB role across suspend and the SoC hung on the cable event.
+USB4 partners on platforms that set the quirk still keep a role.
+
+--- a/drivers/usb/typec/ucsi/ucsi.c
++++ b/drivers/usb/typec/ucsi/ucsi.c
+@@ -1367,10 +1367,10 @@
+ 			typec_partner_set_usb_mode(con->partner, USB_MODE_USB4);
+ 	}
+ 
+-	if ((!UCSI_CONSTAT(con, PARTNER_FLAG_USB)) &&
+-	    ((con->ucsi->quirks & UCSI_USB4_IMPLIES_USB) &&
+-	     (!(UCSI_CONSTAT(con, PARTNER_FLAG_USB4_GEN3) ||
+-		UCSI_CONSTAT(con, PARTNER_FLAG_USB4_GEN4)))))
++	if (!(UCSI_CONSTAT(con, PARTNER_FLAG_USB)) &&
++	    !((con->ucsi->quirks & UCSI_USB4_IMPLIES_USB) &&
++	      (UCSI_CONSTAT(con, PARTNER_FLAG_USB4_GEN3) ||
++	       UCSI_CONSTAT(con, PARTNER_FLAG_USB4_GEN4))))
+ 		u_role = USB_ROLE_NONE;
+ 
+ 	ret = usb_role_switch_set_role(con->usb_role_sw, u_role);

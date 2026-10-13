@@ -196,6 +196,12 @@ repack_bootimg_local_uuid() {
     resolve_root_uuid || return 1
     uuid="${RESOLVED_ROOT_UUID}"
 
+    local incoming_cmd="" incoming=""
+    incoming_cmd="$(read_cmdline_from_bootimg "${kernel_in}")" || true
+    if [[ -n "${incoming_cmd}" ]]; then
+        incoming="$(extract_root_uuid_from_cmdline "${incoming_cmd}")" || true
+    fi
+
     cmdline="$(build_unified_abl_cmdline "${uuid}")" || return 1
 
     work="$(mktemp -d)"
@@ -237,7 +243,12 @@ repack_bootimg_local_uuid() {
     }
     rm -rf "${work}"
 
-    echo "  repack KERNEL: masi.sdroot UUID ${uuid} (this device)" >&2
+    if [[ -n "${incoming}" && "${incoming}" != "${uuid}" ]]; then
+        echo "  repack KERNEL: bundle UUID ${incoming} is not this card" >&2
+        echo "  repack KERNEL: using ${uuid} (${ROOT_UUID_SOURCE})" >&2
+    else
+        echo "  repack KERNEL: masi.sdroot UUID ${uuid} (this device)" >&2
+    fi
     echo "  cmdline: ${cmdline}" >&2
     export MASI_BOOT_KERNEL="${kernel_out}"
 }

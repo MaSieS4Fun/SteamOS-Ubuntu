@@ -1,0 +1,89 @@
+From: MaSi <noreply@masi.local>
+Subject: [PATCH] ath12k: leave WCN firmware running across s2idle
+
+M3 from the suspend thread waits on an IRQ that is already masked,
+so the panel never returns. Do not boot or suspend the radio there.
+
+---
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -165,7 +165,7 @@
+ }
+ EXPORT_SYMBOL(ath12k_core_suspend);
+ 
+-static bool ath12k_s2idle_m3;
++static bool ath12k_ce_poll_paused;
+ 
+ int ath12k_core_suspend_late(struct ath12k_base *ab)
+ {
+@@ -175,24 +175,18 @@
+ 	if (ret <= 0)
+ 		return ret;
+ 
+-	/* The suspend in progress is s2idle even when mem_sleep still says
+-	 * deep: the cmdline asks for deep and SM8750 rewrites the actual
+-	 * transition. pm_suspend_default_s2idle() follows mem_sleep, so it
+-	 * stays false and this used to power the radio down. The next
+-	 * callback then boots firmware on the resume thread, the CE poller
+-	 * walks a dead ring, and WMI never comes back.
+-	 * Keep the firmware in M3 and stop the poller until it is awake.
++	/*
++	 * s2idle must not touch MHI from this thread. Entering M3 waits up
++	 * to 90s and, with the CE IRQ masked, never completes, so the panel
++	 * stays off and the LEDs never return. Powering the chip down and
++	 * booting it again is what made the scan fail. Leave the firmware
++	 * loaded, keep the link in D0, and only stop the poller.
+ 	 */
+-	ath12k_ce_poll_stop(ab);
+ 	if (pm_suspend_target_state == PM_SUSPEND_TO_IDLE) {
+-		ath12k_s2idle_m3 = false;
+-		ath12k_hif_irq_disable(ab);
+-		ath12k_hif_ce_irq_disable(ab);
+-		ret = ath12k_hif_suspend(ab);
+-		if (ret)
+-			ath12k_warn(ab, "WCN M3 suspend failed: %d\n", ret);
+-		else
+-			ath12k_s2idle_m3 = true;
++		WRITE_ONCE(ath12k_ce_poll_paused, true);
++		cancel_delayed_work(&ab->ce_poll_work);
++		if (ab->hif.bus == ATH12K_BUS_PCI)
++			pci_save_state(ath12k_pci_priv(ab)->pdev);
+ 		return 0;
+ 	}
+ 
+@@ -217,14 +211,7 @@
+ 
+ 	reinit_completion(&ab->restart_completed);
+ 	if (pm_suspend_target_state == PM_SUSPEND_TO_IDLE) {
+-		if (ath12k_s2idle_m3) {
+-			ath12k_s2idle_m3 = false;
+-			ret = ath12k_hif_resume(ab);
+-			if (ret)
+-				ath12k_warn(ab, "WCN M3 resume failed: %d\n", ret);
+-		}
+-		ath12k_hif_ce_irq_enable(ab);
+-		ath12k_hif_irq_enable(ab);
++		WRITE_ONCE(ath12k_ce_poll_paused, false);
+ 		ath12k_ce_poll_start(ab);
+ 		complete(&ab->restart_completed);
+ 		return 0;
+@@ -910,6 +897,9 @@
+ 					      ce_poll_work.work);
+ 	int i;
+ 
++	if (READ_ONCE(ath12k_ce_poll_paused))
++		return;
++
+ 	ath12k_ce_service_all(ab);
+ 
+ 	if (test_bit(ATH12K_FLAG_EXT_IRQ_ENABLED, &ab->dev_flags)) {
+@@ -921,6 +911,9 @@
+ 		}
+ 	}
+ 
++	if (READ_ONCE(ath12k_ce_poll_paused))
++		return;
++
+ 	queue_delayed_work(system_dfl_wq, &ab->ce_poll_work,
+ 			   usecs_to_jiffies(500));
+ }
