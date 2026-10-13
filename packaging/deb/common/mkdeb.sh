@@ -13,6 +13,7 @@ mkdeb() {
 
     mkdir -p "${out_dir}"
     rm -f "${deb}"
-    dpkg-deb --root-owner-group --build "${staging}" "${deb}"
+    # -z9 keeps the kernel bundle under GitHub's 100MB git blob limit.
+    dpkg-deb -Zxz -z9 --root-owner-group --build "${staging}" "${deb}"
     echo "${deb}"
 }
