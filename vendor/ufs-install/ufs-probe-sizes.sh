@@ -1,67 +1,47 @@
 #!/usr/bin/env bash
 # Probe UFS Android sizing limits for the Easy UFS Installer GUI.
 # Prints KEY=value lines.
+# Geometry comes from sysfs (512-byte sectors). parted hangs on some UFS LUNs.
 set -euo pipefail
+
+# shellcheck source=ufs-disk.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ufs-disk.sh"
 
 MIN_ANDROID_GIB=16
 RECOMMENDED_ANDROID_GIB=64
 BOOT_PART_GIB=2
 MIN_LINUX_ROOT_GIB=16
 
-part_by_label() {
-  local device=$1 label=$2
-  lsblk -rn -o NAME,PARTLABEL "$device" | awk -v l="$label" '$2==l {print "/dev/"$1; exit}'
-}
-
-detect_ufs_device() {
-  local d
-  for d in /dev/sda /dev/sdb /dev/nvme0n1; do
-    [[ -b "$d" ]] || continue
-    if lsblk -rn -o PARTLABEL "$d" 2>/dev/null | grep -qx userdata; then
-      echo "$d"
-      return 0
-    fi
-  done
-  # Fallback: first non-mmc disk with userdata
-  while read -r name; do
-    [[ -n "$name" ]] || continue
-    [[ "$name" == mmcblk* ]] && continue
-    if lsblk -rn -o PARTLABEL "/dev/${name}" 2>/dev/null | grep -qx userdata; then
-      echo "/dev/${name}"
-      return 0
-    fi
-  done < <(lsblk -dn -o NAME)
-  return 1
-}
-
-DEVICE="$(detect_ufs_device)" || {
+DEVICE="$(detect_ufs_device)"
+[[ -n "$DEVICE" ]] || {
   echo "ERROR=No internal UFS disk with userdata partition found"
   exit 1
 }
 
-UD_PART="$(part_by_label "$DEVICE" userdata || true)"
-[[ -n "$UD_PART" ]] || {
+disk=${DEVICE##*/}
+found=0
+part_start=0
+part_size=0
+for part_sysfs in "/sys/block/${disk}/${disk}"*; do
+  [[ -d "$part_sysfs" ]] || continue
+  [[ -r "${part_sysfs}/uevent" ]] || continue
+  part_label=$(awk -F= '$1=="PARTNAME" {print $2; exit}' "${part_sysfs}/uevent")
+  [[ "$part_label" == "userdata" ]] || continue
+  part_start=$(<"${part_sysfs}/start")
+  part_size=$(<"${part_sysfs}/size")
+  found=1
+  break
+done
+(( found )) || {
   echo "ERROR=userdata partition missing on ${DEVICE}"
   exit 1
 }
 
-UD_NUM="${UD_PART##*[!0-9]}"
-# Start/end in MiB via parted
-mapfile -t PART_LINE < <(parted -s "$DEVICE" unit MiB print 2>/dev/null | awk -v n="$UD_NUM" '$1==n {print $2,$3; exit}')
-[[ ${#PART_LINE[@]} -ge 1 ]] || {
-  echo "ERROR=Could not read userdata geometry"
-  exit 1
-}
-# parted prints e.g. 1234MiB
-read -r UD_START_RAW UD_END_RAW <<<"${PART_LINE[0]}"
-UD_START_MB="${UD_START_RAW%MiB}"
-UD_END_MB="${UD_END_RAW%MiB}"
-UD_START_MB="${UD_START_MB%.*}"
-UD_END_MB="${UD_END_MB%.*}"
-
-DISK_END_RAW="$(parted -s "$DEVICE" unit MiB print 2>/dev/null | awk '/^Disk /{print $3; exit}')"
-DISK_END_MB="${DISK_END_RAW%MiB}"
-DISK_END_MB="${DISK_END_MB%.*}"
+# sysfs start/size are 512-byte sectors even when the UFS logical block is 4096.
+UD_START_MB=$(( (part_start * 512 + 1048575) / 1048576 ))
+UD_END_MB=$(( (part_start * 512 + part_size * 512) / 1048576 ))
+disk_sectors=$(<"/sys/block/${disk}/size")
+DISK_END_MB=$(( disk_sectors * 512 / 1048576 ))
 
 DISK_TOTAL_GIB=$(( (DISK_END_MB + 1023) / 1024 ))
 ORIG_ANDROID_GIB=$(( (UD_END_MB - UD_START_MB + 1023) / 1024 ))
@@ -79,6 +59,8 @@ EXISTING=0
 [[ -n "$RK" && -n "$ST" ]] && EXISTING=1
 
 echo "DEVICE=${DEVICE}"
+echo "SOC=$(detect_soc_family)"
+echo "BOARD=$(read_board_id)"
 echo "DISK_TOTAL_GIB=${DISK_TOTAL_GIB}"
 echo "ORIG_ANDROID_GIB=${ORIG_ANDROID_GIB}"
 echo "MIN_ANDROID_GIB=${MIN_ANDROID_GIB}"

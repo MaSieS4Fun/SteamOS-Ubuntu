@@ -6,6 +6,8 @@ VERSION="1.4.0"
 
 # shellcheck source=ufs-bootimg.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ufs-bootimg.sh"
+# shellcheck source=ufs-disk.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ufs-disk.sh"
 
 FIX_KERNEL=1
 FIX_FSTAB=1
@@ -31,23 +33,6 @@ Options:
   -h, --help      Show help
 
 EOF
-}
-
-detect_ufs_device() {
-  local dev
-  for dev in /dev/sd? /dev/mmcblk?; do
-    [[ -b "$dev" ]] || continue
-    if lsblk -rn -o PARTLABEL "$dev" 2>/dev/null | grep -qx userdata; then
-      echo "$dev"
-      return
-    fi
-  done
-  echo ""
-}
-
-part_by_label() {
-  local device=$1 label=$2
-  lsblk -rn -o NAME,PARTLABEL "$device" | awk -v l="$label" '$2==l {print "/dev/"$1; exit}'
 }
 
 detect_layout() {

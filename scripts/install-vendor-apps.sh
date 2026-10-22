@@ -6,7 +6,7 @@
 #   sudo ./scripts/install-vendor-apps.sh [rootfs]
 #
 # Saltar pasos:
-#   SKIP_ARM_MANAGER=1 SKIP_LSFG=1 SKIP_PROTON=1 SKIP_HEROIC=1 SKIP_SRM=1 SKIP_NO_STEAM=1
+#   SKIP_ARM_MANAGER=1 SKIP_LSFG=1 SKIP_PROTON=1 SKIP_HEROIC=1 SKIP_SRM=1 SKIP_NO_STEAM=1 SKIP_DX12_TURNIP=1
 #
 # EmuDeck no forma parte de la imagen (beta, inestable y confuso en el menú Games).
 #
@@ -18,6 +18,7 @@
 #   4. Heroic                                     — compila (lento)
 #   5. Steam ROM Manager                          — copia
 #   6. ARM Non-Steam Games                        — copia
+#   7. DX12 Turnip Patcher                        — ARM-Manager menu
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -55,5 +56,6 @@ fi
 run SKIP_HEROIC       install-heroic-into-rootfs.sh
 run SKIP_SRM          install-vendor-steam-rom-manager.sh
 run SKIP_NO_STEAM     install-no-steam-manager.sh
+run SKIP_DX12_TURNIP  install-dx12-turnip-patcher.sh
 
 log "Todos los pasos solicitados completados."

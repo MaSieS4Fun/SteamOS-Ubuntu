@@ -30,6 +30,7 @@ Hasta el día del vídeo:
 | `proton-arm-easy-manager` | Proton ARM Easy Manager |
 | `no-steam-games` | ARM Non-Steam Games |
 | `gyro-desktop` | GYRO-FIX |
+| `dx12-turnip-patcher` | DX12 Turnip Patcher |
 | `masi-kernel-edge-sm8550` | `masi-kernel-update` + bundle opcional |
 | `steamos-ubuntu-apps` | Metapaquete (todos los anteriores) |
 

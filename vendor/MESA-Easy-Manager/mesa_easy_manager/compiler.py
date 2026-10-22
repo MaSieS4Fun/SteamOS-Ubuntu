@@ -18,7 +18,7 @@ from .constants import (
     USER_AGENT,
 )
 from .local_store import store_compiled_library
-from .rocknix import RocknixPatch, download_patches
+from .rocknix import PATCHES_ROOT, SILENT_PATCH_FILES, RocknixPatch, download_patches
 from .versions import is_devel
 
 LogFn = Callable[[str], None]
@@ -96,6 +96,33 @@ def _find_built_library(build_dir: Path) -> Path:
         if "freedreno" in str(path):
             return path
     return candidates[0]
+
+
+def _apply_silent_patches(source_dir: Path, log: LogFn | None) -> None:
+    """Apply fixes that are not shown in the patch-choice dialog."""
+    for rel in SILENT_PATCH_FILES:
+        patch_file = PATCHES_ROOT / rel
+        if not patch_file.is_file():
+            raise CompileError(f"Missing internal patch: {patch_file}")
+        result = subprocess.run(
+            [
+                "patch",
+                "-p1",
+                "--forward",
+                "--batch",
+                "-i",
+                str(patch_file),
+            ],
+            cwd=source_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            output = (result.stdout or "") + (result.stderr or "")
+            _log(log, output.rstrip())
+            raise CompileError(
+                f"Internal Turnip fix failed to apply ({patch_file.name})"
+            )
 
 
 def _apply_patch_file(source_dir: Path, patch_file: Path, log: LogFn | None) -> None:
@@ -198,6 +225,8 @@ def compile_version(
             if not source_candidates:
                 raise CompileError("Extracted Mesa source directory was not found")
             source_dir = source_candidates[0]
+
+        _apply_silent_patches(source_dir, log)
 
         if apply_patches:
             patches = _download_community_patches(

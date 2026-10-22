@@ -1,0 +1,130 @@
+--- a/src/freedreno/vulkan/tu_cmd_buffer.cc
++++ b/src/freedreno/vulkan/tu_cmd_buffer.cc
+@@ -4732,6 +4732,8 @@
+                         VkPipelineBindPoint bind_point)
+ {
+    VK_FROM_HANDLE(tu_pipeline_layout, layout, info->layout);
++   if (!layout)
++      return;
+    unsigned dyn_idx = 0;
+ 
+    struct tu_descriptor_state *descriptors_state =
+@@ -4915,6 +4917,8 @@
+    VkPipelineBindPoint bind_point)
+ {
+    VK_FROM_HANDLE(tu_pipeline_layout, layout, info->layout);
++   if (!layout)
++      return;
+ 
+    struct tu_descriptor_state *descriptors_state =
+       tu_get_descriptors_state(cmd, bind_point);
+@@ -4931,8 +4935,9 @@
+           info->pOffsets[i]) |
+          BINDLESS_DESCRIPTOR_64B;
+ 
+-      if (cmd->device->physical_device->enable_ssbo_emulation ||
+-          set_layout->has_inline_uniforms)
++      if (set_layout &&
++          (cmd->device->physical_device->enable_ssbo_emulation ||
++           set_layout->has_inline_uniforms))
+          cmd->state.dirty |= TU_CMD_DIRTY_SHADER_CONSTS;
+    }
+ 
+@@ -4966,9 +4971,13 @@
+    VkPipelineBindPoint bind_point)
+ {
+    VK_FROM_HANDLE(tu_pipeline_layout, layout, info->layout);
++   if (!layout)
++      return;
+ 
+    struct tu_descriptor_set_layout *set_layout =
+       layout->set[info->set].layout;
++   if (!set_layout || !set_layout->embedded_samplers)
++      return;
+ 
+    struct tu_descriptor_state *descriptors_state =
+       tu_get_descriptors_state(cmd, bind_point);
+@@ -5037,8 +5046,12 @@
+                        VkPipelineBindPoint bind_point)
+ {
+    VK_FROM_HANDLE(tu_pipeline_layout, pipe_layout, info->layout);
++   if (!pipe_layout)
++      return;
+    struct tu_descriptor_set_layout *layout =
+       pipe_layout->set[info->set].layout;
++   if (!layout)
++      return;
+    struct tu_descriptor_set *set =
+       &tu_get_descriptors_state(cmd, bind_point)->push_set;
+ 
+@@ -5100,11 +5113,15 @@
+    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
+    VK_FROM_HANDLE(tu_pipeline_layout, pipe_layout,
+                   pPushDescriptorSetWithTemplateInfo->layout);
++   if (!pipe_layout)
++      return;
+    VK_FROM_HANDLE(
+       tu_descriptor_update_template, templ,
+       pPushDescriptorSetWithTemplateInfo->descriptorUpdateTemplate);
+    struct tu_descriptor_set_layout *layout =
+       pipe_layout->set[pPushDescriptorSetWithTemplateInfo->set].layout;
++   if (!layout)
++      return;
+    struct tu_descriptor_set *set =
+       &tu_get_descriptors_state(cmd, templ->bind_point)->push_set;
+ 
+--- a/src/freedreno/vulkan/tu_shader.cc
++++ b/src/freedreno/vulkan/tu_shader.cc
+@@ -334,6 +334,17 @@
+ 
+    unsigned set = nir_intrinsic_desc_set(instr);
+    unsigned binding = nir_intrinsic_binding(instr);
++   /* Unused pipeline-layout sets are VK_NULL_HANDLE. vkd3d-proton still
++    * emits vulkan_resource_index for them. binding_layout->type is then a
++    * NULL load (vkCreateGraphicsPipelines, faulting address 0xb8).
++    */
++   if (!layout || set >= MAX_SETS || !layout->set[set].layout ||
++       binding >= layout->set[set].layout->binding_count) {
++      nir_def_replace(&instr->def,
++                      nir_undef(b, instr->def.num_components,
++                                instr->def.bit_size));
++      return;
++   }
+    struct tu_descriptor_set_layout *set_layout = layout->set[set].layout;
+    struct tu_descriptor_set_binding_layout *binding_layout =
+       &set_layout->binding[binding];
+@@ -530,6 +541,10 @@
+ 
+    unsigned set = var->data.descriptor_set;
+    unsigned binding = var->data.binding;
++   if (!layout || set >= MAX_SETS || !layout->set[set].layout ||
++       binding >= layout->set[set].layout->binding_count) {
++      return nir_bindless_resource_ir3(b, 32, nir_imm_int(b, 0), .desc_set = 0);
++   }
+    const struct tu_descriptor_set_binding_layout *bind_layout =
+       &layout->set[set].layout->binding[binding];
+ 
+@@ -916,6 +931,11 @@
+    nir_deref_instr *deref = nir_src_as_deref(tex->src[deref_src_idx].src);
+ 
+    nir_variable *var = nir_deref_instr_get_variable(deref);
++   if (!layout || var->data.descriptor_set >= MAX_SETS ||
++       !layout->set[var->data.descriptor_set].layout ||
++       var->data.binding >=
++          layout->set[var->data.descriptor_set].layout->binding_count)
++      return;
+    const struct tu_descriptor_set_layout *set_layout =
+       layout->set[var->data.descriptor_set].layout;
+    const struct tu_descriptor_set_binding_layout *binding =
+@@ -1080,6 +1100,11 @@
+    if (!binding.success)
+       return false;
+ 
++   if (!layout || binding.desc_set >= MAX_SETS ||
++       !layout->set[binding.desc_set].layout ||
++       binding.binding >= layout->set[binding.desc_set].layout->binding_count)
++      return false;
++
+    struct tu_descriptor_set_layout *set_layout = layout->set[binding.desc_set].layout;
+    struct tu_descriptor_set_binding_layout *binding_layout =
+       &set_layout->binding[binding.binding];

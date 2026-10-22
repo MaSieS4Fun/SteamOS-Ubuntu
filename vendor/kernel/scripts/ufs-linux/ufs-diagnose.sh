@@ -4,28 +4,13 @@ set -euo pipefail
 
 # shellcheck source=ufs-bootimg.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ufs-bootimg.sh"
+# shellcheck source=ufs-disk.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ufs-disk.sh"
 
 log()  { printf '\033[1;34m[ufs-diagnose]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[ufs-diagnose]\033[0m %s\n' "$*" >&2; }
 
 [[ $EUID -eq 0 ]] || { echo "Run as root: sudo $0"; exit 1; }
-
-detect_ufs_device() {
-  local dev label
-  for dev in /dev/sd? /dev/mmcblk?; do
-    [[ -b "$dev" ]] || continue
-    if lsblk -rn -o PARTLABEL "$dev" 2>/dev/null | grep -qx userdata; then
-      echo "$dev"
-      return
-    fi
-  done
-  echo ""
-}
-
-part_by_label() {
-  local device=$1 label=$2
-  lsblk -rn -o NAME,PARTLABEL "$device" | awk -v l="$label" '$2==l {print "/dev/"$1; exit}'
-}
 
 DEVICE=$(detect_ufs_device)
 LAYOUT="unknown"
@@ -44,6 +29,7 @@ if [[ -z "$DEVICE" ]]; then
 fi
 
 log "Internal UFS: ${DEVICE}"
+note_foreign_linux_labels "$DEVICE"
 
 echo
 echo "--- Partition table ---"

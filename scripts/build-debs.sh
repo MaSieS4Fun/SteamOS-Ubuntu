@@ -123,7 +123,7 @@ stage_easy_ufs_install() {
         "${staging}/usr/share/icons/hicolor/scalable/apps"
 
     for f in \
-        install-masios-to-internal.sh ufs-bootimg.sh ufs-diagnose.sh \
+        install-masios-to-internal.sh ufs-bootimg.sh ufs-disk.sh ufs-diagnose.sh \
         ufs-fix-internal-boot.sh ufs-probe-sizes.sh \
         easy-ufs-installer.py DISCLAIMER.md README.md
     do
@@ -485,6 +485,62 @@ Description: EmuKitARM — emulator installer GUI for SM8550 / SteamOS-Ubuntu
 EOF
 }
 
+stage_dx12_turnip_patcher() {
+    local staging="$1"
+    local vendor="${ROOT_DIR}/vendor/DX12-2-Turnip-Patcher"
+    local share="${staging}/usr/share/dx12-turnip-patcher"
+
+    [[ -d "${vendor}/dx12_turnip_patcher" ]] || die "missing DX12-2-Turnip-Patcher"
+    stage_empty "${staging}"
+    mkdir -p "${share}" "${staging}/usr/bin" "${staging}/usr/share/applications"
+
+    cp -a "${vendor}/dx12_turnip_patcher" "${share}/"
+    [[ -f "${vendor}/run.py" ]] && cp -a "${vendor}/run.py" "${share}/"
+    [[ -d "${vendor}/data" ]] && cp -a "${vendor}/data" "${share}/"
+    find "${share}" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+
+    cat > "${staging}/usr/bin/dx12-turnip-patcher" <<'EOF'
+#!/bin/bash
+export DX12_TURNIP_PATCHER_ROOT=/usr/share/dx12-turnip-patcher
+export PYTHONPATH="${DX12_TURNIP_PATCHER_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
+exec python3 -m dx12_turnip_patcher "$@"
+EOF
+    chmod 0755 "${staging}/usr/bin/dx12-turnip-patcher"
+
+    if [[ -f "${vendor}/data/icons/dx12-turnip.png" ]]; then
+        for size in 16 24 32 48 64 128 256 512; do
+            install -d "${staging}/usr/share/icons/hicolor/${size}x${size}/apps"
+            install -m 0644 "${vendor}/data/icons/dx12-turnip.png" \
+                "${staging}/usr/share/icons/hicolor/${size}x${size}/apps/dx12-turnip-patcher.png"
+        done
+    fi
+
+    cat > "${staging}/usr/share/applications/dx12-turnip-patcher.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=DX12 Turnip Patcher
+Comment=Patch a chosen Proton so DX12 games can run on Turnip
+Exec=dx12-turnip-patcher gui
+Icon=dx12-turnip-patcher
+Terminal=false
+Categories=System;Utility;X-ARM-Manager;
+Keywords=Proton;vkd3d;Turnip;mesh;DirectX;ARM;
+StartupNotify=true
+EOF
+
+    write_control "${staging}" <<EOF
+Package: dx12-turnip-patcher
+Version: ${PKG_DX12_TURNIP_PATCHER}
+Architecture: arm64
+Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
+Depends: python3, python3-gi, gir1.2-gtk-3.0
+Description: DX12 Turnip Patcher — run DX12 games on Turnip
+ Keeps feature level 12_2 and MeshShaderTier, returns from a NULL mesh call, and accepts wave size 32.
+ Every Proton in compatibilitytools.d can be patched. Builds under steamapps/common are left unchanged.
+ Homepage: https://github.com/${STEAMOS_UBUNTU_GITHUB_REPO}
+EOF
+}
+
 stage_steamos_ubuntu_apps() {
     local staging="$1"
 
@@ -494,7 +550,7 @@ Package: steamos-ubuntu-apps
 Version: ${PKG_STEAMOS_UBUNTU_APPS}
 Architecture: all
 Maintainer: SteamOS-Ubuntu <steamos-ubuntu@local>
-Depends: mesa-easy-manager (>= ${PKG_MESA_EASY_MANAGER}), easy-ufs-install (>= ${PKG_EASY_UFS_INSTALL}), proton-arm-easy-manager (>= ${PKG_PROTON_ARM_EASY_MANAGER}), no-steam-games (>= ${PKG_NO_STEAM_GAMES}), gyro-desktop (>= ${PKG_GYRO_DESKTOP}), emukitarm (>= ${PKG_EMUKITARM})
+Depends: mesa-easy-manager (>= ${PKG_MESA_EASY_MANAGER}), easy-ufs-install (>= ${PKG_EASY_UFS_INSTALL}), proton-arm-easy-manager (>= ${PKG_PROTON_ARM_EASY_MANAGER}), no-steam-games (>= ${PKG_NO_STEAM_GAMES}), gyro-desktop (>= ${PKG_GYRO_DESKTOP}), emukitarm (>= ${PKG_EMUKITARM}), dx12-turnip-patcher (>= ${PKG_DX12_TURNIP_PATCHER})
 Recommends: masi-kernel-edge-sm8550 (>= ${PKG_MASI_KERNEL_EDGE_SM8550})
 Description: SteamOS-Ubuntu gaming apps + kernel updater (metapackage)
  Pulls in ARM Manager apps (kernel updater recommended when the kbase bundle is published).
@@ -514,6 +570,7 @@ build_one() {
     no-steam-games) fn=stage_no_steam_games ;;
     gyro-desktop) fn=stage_gyro_desktop ;;
     emukitarm) fn=stage_emukitarm ;;
+    dx12-turnip-patcher) fn=stage_dx12_turnip_patcher ;;
     masi-kernel-edge-sm8550) fn=stage_masi_kernel ;;
     steamos-ubuntu-apps) fn=stage_steamos_ubuntu_apps ;;
     *) die "unknown package: ${name}" ;;
@@ -542,6 +599,7 @@ if [[ -n "$ONLY" ]]; then
         no-steam-games) build_one no-steam-games "${PKG_NO_STEAM_GAMES}" ;;
         gyro-desktop) build_one gyro-desktop "${PKG_GYRO_DESKTOP}" ;;
         emukitarm) build_one emukitarm "${PKG_EMUKITARM}" ;;
+        dx12-turnip-patcher) build_one dx12-turnip-patcher "${PKG_DX12_TURNIP_PATCHER}" ;;
         masi-kernel-edge-sm8550) build_one masi-kernel-edge-sm8550 "${PKG_MASI_KERNEL_EDGE_SM8550}" ;;
         steamos-ubuntu-apps) build_one steamos-ubuntu-apps "${PKG_STEAMOS_UBUNTU_APPS}" all ;;
         *) die "unknown package: ${ONLY}" ;;
@@ -557,6 +615,7 @@ build_one proton-arm-easy-manager "${PKG_PROTON_ARM_EASY_MANAGER}"
 build_one no-steam-games "${PKG_NO_STEAM_GAMES}"
 build_one gyro-desktop "${PKG_GYRO_DESKTOP}"
 build_one emukitarm "${PKG_EMUKITARM}"
+build_one dx12-turnip-patcher "${PKG_DX12_TURNIP_PATCHER}"
 
 # Kernel kbase lives under vendor/kernel/output/ (gitignored) — skip on CI/apt-only builds.
 if resolve_kernel_kbase_dir >/dev/null 2>&1; then

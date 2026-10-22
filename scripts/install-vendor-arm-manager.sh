@@ -194,6 +194,37 @@ EOF
   done
 fi
 
+# ── Fix-PAD (InputPlumber + desktop SDL2, Xbox 360 layout) ───────────────────
+log "Fix-PAD → /usr/share/fix-pad"
+FIXPAD_SRC="${ROOT_DIR}/vendor/system-fixes/fix-pad"
+share_pad="${ROOTFS}/usr/share/fix-pad"
+if [[ -d "$FIXPAD_SRC" && -f "${FIXPAD_SRC}/fix-pad.sh" ]]; then
+  rm -rf "${share_pad}"
+  mkdir -p "${share_pad}"
+  install -m 0644 "${FIXPAD_SRC}/ayn_mcu.yaml" "${share_pad}/ayn_mcu.yaml"
+  install -m 0644 "${FIXPAD_SRC}/qcom-gamecontrollerdb.txt" "${share_pad}/qcom-gamecontrollerdb.txt"
+  install -m 0644 "${FIXPAD_SRC}/60-steamos-sdl-gamepad.conf" "${share_pad}/60-steamos-sdl-gamepad.conf"
+  install -m 0755 "${FIXPAD_SRC}/steamos-sdl-gamepad.sh" "${share_pad}/steamos-sdl-gamepad.sh"
+  install -m 0755 "${FIXPAD_SRC}/fix-pad.sh" "${share_pad}/fix-pad.sh"
+  install -m 0755 "${FIXPAD_SRC}/fix-pad.sh" "${bin}/fix-pad"
+  cat > "${apps}/fix-pad.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Fix-PAD
+GenericName=Restore Xbox gamepad layout
+Comment=Put X/Y and LB/RB back to Xbox 360 layout in InputPlumber and desktop SDL2
+Exec=konsole -e bash -c 'sudo /usr/bin/fix-pad; echo; read -r -p "Press Enter to close..."'
+Icon=input-gaming
+Terminal=false
+Categories=System;Settings;X-ARM-Manager;
+Keywords=gamepad;pad;xbox;inputplumber;sdl;odin;buttons;
+StartupNotify=true
+EOF
+else
+  log "WARN: missing ${FIXPAD_SRC} — Fix-PAD not installed"
+fi
+
 # ── Easy UFS Installer ────────────────────────────────────────────────────────
 log "Easy UFS Installer → /usr/share/easy-ufs-install"
 share_ufs="${ROOTFS}/usr/share/easy-ufs-install"
@@ -201,7 +232,7 @@ rm -rf "${share_ufs}"
 mkdir -p "${share_ufs}"
 
 for f in \
-  install-masios-to-internal.sh ufs-bootimg.sh ufs-diagnose.sh \
+  install-masios-to-internal.sh ufs-bootimg.sh ufs-disk.sh ufs-diagnose.sh \
   ufs-fix-internal-boot.sh ufs-probe-sizes.sh \
   easy-ufs-installer.py DISCLAIMER.md README.md
 do
@@ -245,11 +276,17 @@ Keywords=ufs;internal;android;storage;install;dual-boot;
 StartupNotify=true
 EOF
 
+# ── DX12 Turnip Patcher (ARM-Manager) ─────────────────────────────────────────
+if [[ -x "${ROOT_DIR}/scripts/install-dx12-turnip-patcher.sh" ]]; then
+  log "DX12 Turnip Patcher → ARM-Manager"
+  "${ROOT_DIR}/scripts/install-dx12-turnip-patcher.sh" "$ROOTFS"
+fi
+
 # ── Menú ARM-Manager (KDE / XDG) ─────────────────────────────────────────────
 cat > "${dirs}/arm-manager.directory" <<'EOF'
 [Desktop Entry]
 Name=ARM-Manager
-Comment=ARM handheld tools (Mesa, Box64, FEXEmu, Plasma Mobile, Decky, UFS)
+Comment=ARM handheld tools (Mesa, Box64, FEXEmu, Plasma Mobile, Decky, UFS, DX12, Fix-PAD)
 Icon=preferences-system
 Type=Directory
 X-KDE-Weight=50

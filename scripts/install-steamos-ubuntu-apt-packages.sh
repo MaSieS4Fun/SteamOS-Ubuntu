@@ -120,6 +120,7 @@ for pkg in \
     no-steam-games \
     gyro-desktop \
     emukitarm \
+    dx12-turnip-patcher \
     masi-kernel-edge-sm8550 \
     steamos-ubuntu-apps
 do
@@ -128,7 +129,7 @@ do
 done
 shopt -u nullglob
 
-((${#ordered[@]} == 8)) || die "expected 8 debs, got ${#ordered[@]}"
+((${#ordered[@]} == 9)) || die "expected 9 debs, got ${#ordered[@]}"
 
 log "Installing MaSi packages via apt (registers origin for future apt upgrade)…"
 
@@ -172,12 +173,12 @@ fi
 log "Installed via apt:"
 if [[ "${LIVE}" -eq 1 ]]; then
     dpkg -l mesa-easy-manager easy-ufs-install proton-arm-easy-manager \
-        no-steam-games gyro-desktop emukitarm masi-kernel-edge-sm8550 steamos-ubuntu-apps \
+        no-steam-games gyro-desktop emukitarm dx12-turnip-patcher masi-kernel-edge-sm8550 steamos-ubuntu-apps \
         2>/dev/null | tail -n +2 || true
 else
     chroot "${ROOTFS}" dpkg -l \
         mesa-easy-manager easy-ufs-install proton-arm-easy-manager \
-        no-steam-games gyro-desktop emukitarm masi-kernel-edge-sm8550 steamos-ubuntu-apps \
+        no-steam-games gyro-desktop emukitarm dx12-turnip-patcher masi-kernel-edge-sm8550 steamos-ubuntu-apps \
         2>/dev/null | tail -n +2 || true
 fi
 

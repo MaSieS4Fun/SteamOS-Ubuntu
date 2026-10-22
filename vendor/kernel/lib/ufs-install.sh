@@ -5,13 +5,31 @@ set -euo pipefail
 update_internal_ufs_kernel() {
     local kernel="${1:-/boot/KERNEL}"
     local rk_dev mount="/run/masi-ufs-rocknix" need_umount=0
+    local name label pk root_src root_pk tran
 
     [[ -f "${kernel}" ]] || {
         echo "  UFS: skip ROCKNIX sync (no ${kernel})" >&2
         return 0
     }
 
-    rk_dev="$(lsblk -rn -o NAME,PARTLABEL 2>/dev/null | awk '$2=="ROCKNIX"{print "/dev/"$1; exit}')"
+    # Only a ROCKNIX partition on the Android userdata disk. The boot SD
+    # and a dock card can carry PARTLABEL=STORAGE (and must not match).
+    rk_dev=""
+    while read -r name label; do
+        [[ "${label}" == "ROCKNIX" ]] || continue
+        pk=$(lsblk -no PKNAME "/dev/${name}" 2>/dev/null || true)
+        [[ -n "${pk}" ]] || continue
+        [[ "${pk}" == mmcblk* ]] && continue
+        root_src=$(findmnt -no SOURCE / 2>/dev/null || true)
+        root_pk=$(lsblk -no PKNAME "${root_src}" 2>/dev/null || true)
+        [[ -n "${root_pk}" && "${pk}" == "${root_pk}" ]] && continue
+        tran=$(lsblk -dn -o TRAN "/dev/${pk}" 2>/dev/null || true)
+        [[ "${tran}" == usb || "${tran}" == mmc ]] && continue
+        if lsblk -rn -o PARTLABEL "/dev/${pk}" 2>/dev/null | grep -qx userdata; then
+            rk_dev="/dev/${name}"
+            break
+        fi
+    done < <(lsblk -rn -o NAME,PARTLABEL 2>/dev/null)
     [[ -n "${rk_dev}" ]] || {
         echo "  UFS: no ROCKNIX partition — skip internal KERNEL sync" >&2
         return 0
@@ -55,6 +73,7 @@ install_ufs_linux_scripts() {
     mkdir -p "${dest}"
     install -m755 "${src}/install-masios-to-internal.sh" "${dest}/"
     install -m755 "${src}/ufs-bootimg.sh" "${dest}/"
+    install -m755 "${src}/ufs-disk.sh" "${dest}/"
     install -m755 "${src}/ufs-fix-internal-boot.sh" "${dest}/"
     install -m755 "${src}/ufs-diagnose.sh" "${dest}/"
 

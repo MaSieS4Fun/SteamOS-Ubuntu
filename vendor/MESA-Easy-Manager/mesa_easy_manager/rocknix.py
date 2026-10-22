@@ -33,6 +33,12 @@ BUNDLED_PATCH_FILES: tuple[str, ...] = (
     "SM8750/0001-add-a830-chip-id.patch",
 )
 
+# Always applied, never listed in the compile dialog.
+SILENT_PATCH_FILES: tuple[str, ...] = (
+    "silent/0001-turnip-skip-missing-vertex-shader-draw-state.patch",
+    "silent/0002-turnip-null-descriptor-set-layout.patch",
+)
+
 DEVICES = (
     "Odin 2, Thor, R-Pocket 6 (SM8550 / Adreno 740) and "
     "Odin 3 (SM8750 / Adreno 830)"

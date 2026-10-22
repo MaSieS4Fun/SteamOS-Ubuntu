@@ -16,7 +16,7 @@
 #   - ROCKNIX ABL installed on the device
 #   - /boot/KERNEL (MaSi-OS multidevice ROCKNIX ABL bootimg)
 #   - abootimg (apt install abootimg) — packs UFS-safe KERNEL for ROCKNIX
-#   - Qualcomm SM8550 SoC (AYN Odin 2, Thor, Odin 2 Mini/Portal, etc.)
+#   - Qualcomm SM8550 or SM8750 (AYN Odin 2 family, Thor, Odin 3, etc.)
 #
 # Usage:
 #   sudo ./install-masios-to-internal.sh
@@ -25,10 +25,12 @@
 
 set -euo pipefail
 
-VERSION="1.8.0"
+VERSION="1.9.0"
 
 # shellcheck source=ufs-bootimg.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ufs-bootimg.sh"
+# shellcheck source=ufs-disk.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ufs-disk.sh"
 
 BOOT_SRC="/boot"
 
@@ -114,11 +116,6 @@ part_dev() {
   fi
 }
 
-part_by_label() {
-  local device=$1 label=$2
-  lsblk -rn -o NAME,PARTLABEL "$device" | awk -v l="$label" '$2==l {print "/dev/"$1; exit}'
-}
-
 usage() {
   cat <<EOF
 MaSi-OS / UFS Linux install-to-internal v${VERSION}
@@ -158,57 +155,10 @@ read_device_model() {
   echo "unknown"
 }
 
-read_board_id() {
-  if [[ -f /etc/armbian-release ]]; then
-    awk -F= '/^BOARD=/{print $2}' /etc/armbian-release
-    return
-  fi
-  echo ""
-}
-
-detect_soc_family() {
-  local family=""
-  if [[ -f /etc/armbian-release ]]; then
-    family=$(awk -F= '/^BOARDFAMILY=|^LINUXFAMILY=/{print $2; exit}' /etc/armbian-release)
-  fi
-  if [[ -z "$family" && -f /sys/firmware/devicetree/base/compatible ]]; then
-    if tr '\0' '\n' < /sys/firmware/devicetree/base/compatible | grep -q 'qcom,sm8550'; then
-      family="sm8550"
-    fi
-  fi
-  echo "$family"
-}
-
-detect_ufs_device() {
-  local soc dev
-  soc=$(detect_soc_family)
-
-  # SM8550 AYN handhelds: Android UFS is almost always /dev/sda
-  case "$soc" in
-    sm8550|SM8550)
-      if [[ -b /dev/sda ]] && lsblk -rn -o PARTLABEL /dev/sda 2>/dev/null | grep -qx userdata; then
-        echo /dev/sda
-        return
-      fi
-      ;;
-  esac
-
-  # Fallback: any block device with a userdata partition label
-  for dev in /dev/sd? /dev/mmcblk?; do
-    [[ -b "$dev" ]] || continue
-    if timeout 5 lsblk -rn -o PARTLABEL "$dev" 2>/dev/null | grep -qx userdata; then
-      echo "$dev"
-      return
-    fi
-  done
-
-  echo ""
-}
-
 validate_supported_board() {
   local board="$1"
   case "$board" in
-    ayn-odin2|ayn-odin2mini|ayn-odin2portal|ayn-thor|ayn-odin2ex|retroidpocket6)
+    ayn-odin2|ayn-odin2mini|ayn-odin2portal|ayn-thor|ayn-odin2ex|ayn-odin3|retroidpocket6)
       return 0
       ;;
     "")
@@ -217,7 +167,7 @@ validate_supported_board() {
       ;;
     *)
       warn "Board '${board}' is not on the verified MaSi-OS device list."
-      warn "Tested: ayn-odin2, ayn-odin2mini, ayn-odin2portal, ayn-thor"
+      warn "Tested: ayn-odin2, ayn-odin2mini, ayn-odin2portal, ayn-thor, ayn-odin3"
       read -rp "Continue anyway? [y/N]: " ans
       [[ "$ans" =~ ^[Yy]$ ]] || die "Aborted by user."
       ;;
@@ -375,7 +325,8 @@ check_running_from_removable() {
 check_existing_install() {
   local device=$1 label rk st
 
-  log "Checking for existing internal Linux partitions (labels: ROCKNIX, STORAGE)..."
+  log "Checking for existing internal Linux partitions on ${device} (labels: ROCKNIX, STORAGE)..."
+  note_foreign_linux_labels "$device"
   rk=$(part_by_label "$device" ROCKNIX || true)
   st=$(part_by_label "$device" STORAGE || true)
 
@@ -562,7 +513,7 @@ show_risk_disclaimer() {
 
   REQUIREMENTS:
     - ROCKNIX ABL bootloader already installed
-    - MaSi-OS (or compatible Armbian SM8550) running from microSD
+    - MaSi-OS running from microSD (SM8550 or SM8750)
     - A tested /boot/KERNEL built for dual-boot (SD + UFS)
     - Supported board: AYN Odin 2 family, Thor, Retroid Pocket 6, etc.
 
@@ -777,7 +728,7 @@ main() {
   soc=$(detect_soc_family)
   board=$(read_board_id)
 
-  [[ "$soc" == "sm8550" || "$soc" == "SM8550" ]] || die "Unsupported SoC (${soc:-unknown}). SM8550 required."
+  soc_is_supported "$soc" || die "Unsupported SoC (${soc:-unknown}). SM8550 or SM8750 required."
   validate_supported_board "$board"
 
   DEVICE=$(detect_ufs_device)

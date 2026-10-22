@@ -1,0 +1,111 @@
+--- a/src/freedreno/vulkan/tu_pipeline.cc
++++ b/src/freedreno/vulkan/tu_pipeline.cc
+@@ -792,6 +792,10 @@
+       last_shader = vs;
+    }
+ 
++   /* No VS/TES/GS (see tu_emit_program_state). Skip rather than faulting. */
++   if (!last_shader)
++      return;
++
+    struct ir3_shader_linkage linkage = {
+       .primid_loc = 0xff,
+       .clip0_loc = 0xff,
+@@ -2311,7 +2315,7 @@
+    struct tu_cs prog_cs;
+ 
+    const struct ir3_shader_variant *variants[MESA_SHADER_STAGES];
+-   struct tu_draw_state draw_states[MESA_SHADER_STAGES];
++   struct tu_draw_state draw_states[MESA_SHADER_STAGES] = {};
+ 
+    for (mesa_shader_stage stage = MESA_SHADER_VERTEX;
+         stage < ARRAY_SIZE(variants); stage = (mesa_shader_stage) (stage+1)) {
+@@ -2392,7 +2396,13 @@
+   /* Don't use the binning pass variant when GS is present because we don't
+    * support compiling correct binning pass variants with GS.
+    */
+-   if (variants[MESA_SHADER_GEOMETRY]) {
++   /* Pipelines with no vertex shader (mesh/amplification stages, or a GPL
++    * link that has not stitched a VS in yet) still reach this path. empty_gs
++    * has a NULL variant, so the GS check below is false and the old code
++    * dereferenced shaders[VS]/shaders[GS]. That is a NULL load at
++    * tu_shader::binning_state (vkCreateGraphicsPipelines, access +0x150).
++    */
++   if (variants[MESA_SHADER_GEOMETRY] || !shaders[MESA_SHADER_VERTEX]) {
+       prog->vs_binning_state = prog->vs_state;
+    } else {
+       prog->vs_binning_state =
+@@ -2404,10 +2414,14 @@
+    prog->hs_state = draw_states[MESA_SHADER_TESS_CTRL];
+    prog->ds_state = draw_states[MESA_SHADER_TESS_EVAL];
+    prog->gs_state = draw_states[MESA_SHADER_GEOMETRY];
+-   prog->gs_binning_state =
+-      (safe_variants & (1u << MESA_SHADER_GEOMETRY)) ?
+-      shaders[MESA_SHADER_GEOMETRY]->safe_const_binning_state :
+-      shaders[MESA_SHADER_GEOMETRY]->binning_state;
++   if (shaders[MESA_SHADER_GEOMETRY]) {
++      prog->gs_binning_state =
++         (safe_variants & (1u << MESA_SHADER_GEOMETRY)) ?
++         shaders[MESA_SHADER_GEOMETRY]->safe_const_binning_state :
++         shaders[MESA_SHADER_GEOMETRY]->binning_state;
++   } else {
++      prog->gs_binning_state = prog->gs_state;
++   }
+    prog->fs_state = draw_states[MESA_SHADER_FRAGMENT];
+ 
+    const struct ir3_shader_variant *vs = variants[MESA_SHADER_VERTEX];
+@@ -2417,34 +2431,38 @@
+    const struct ir3_shader_variant *fs = variants[MESA_SHADER_FRAGMENT];
+ 
+    tu_cs_begin_sub_stream(sub_cs, 512, &prog_cs);
+-   tu6_emit_vpc<CHIP>(&prog_cs, vs, hs, ds, gs, fs);
++   if (gs || ds || vs)
++      tu6_emit_vpc<CHIP>(&prog_cs, vs, hs, ds, gs, fs);
+    prog->vpc_state = tu_cs_end_draw_state(sub_cs, &prog_cs);
+ 
+-   const struct ir3_shader_variant *last_variant;
+-   const struct tu_shader *last_shader;
++   const struct ir3_shader_variant *last_variant = NULL;
++   const struct tu_shader *last_shader = NULL;
+    if (gs) {
+       last_shader = shaders[MESA_SHADER_GEOMETRY];
+       last_variant = gs;
+    } else if (ds) {
+       last_shader = shaders[MESA_SHADER_TESS_EVAL];
+       last_variant = ds;
+-   } else {
++   } else if (vs) {
+       last_shader = shaders[MESA_SHADER_VERTEX];
+       last_variant = vs;
+    }
+ 
+-   prog->per_view_viewport =
+-      !last_variant->writes_viewport &&
+-      (dev->vk.enabled_features.multiviewPerViewViewports ||
+-       (shaders[MESA_SHADER_FRAGMENT]->fs.has_fdm &&
+-       dev->physical_device->info->props.has_per_view_viewport));
+-   prog->per_layer_viewport = last_shader->per_layer_viewport;
+-   prog->fake_single_viewport =
+-      (prog->per_view_viewport &&
+-       !dev->vk.enabled_features.multiviewPerViewViewports) ||
+-      prog->per_layer_viewport;
+-   prog->writes_shading_rate = last_variant->writes_shading_rate;
+-   prog->reads_shading_rate = fs->reads_shading_rate;
++   if (last_variant && last_shader) {
++      prog->per_view_viewport =
++         !last_variant->writes_viewport &&
++         (dev->vk.enabled_features.multiviewPerViewViewports ||
++          (shaders[MESA_SHADER_FRAGMENT] &&
++           shaders[MESA_SHADER_FRAGMENT]->fs.has_fdm &&
++           dev->physical_device->info->props.has_per_view_viewport));
++      prog->per_layer_viewport = last_shader->per_layer_viewport;
++      prog->fake_single_viewport =
++         (prog->per_view_viewport &&
++          !dev->vk.enabled_features.multiviewPerViewViewports) ||
++         prog->per_layer_viewport;
++      prog->writes_shading_rate = last_variant->writes_shading_rate;
++   }
++   prog->reads_shading_rate = fs && fs->reads_shading_rate;
+ }
+ 
+ static const enum mesa_vk_dynamic_graphics_state tu_vertex_input_state[] = {

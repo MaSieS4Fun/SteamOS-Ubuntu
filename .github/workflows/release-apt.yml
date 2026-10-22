@@ -57,6 +57,25 @@ jobs:
           chmod +x scripts/build-debs.sh scripts/generate-apt-repo.sh
           ./scripts/build-debs.sh
 
+      - name: Keep a previously published kernel package
+        run: |
+          if compgen -G "output/debs/masi-kernel-edge-sm8550_*.deb" > /dev/null; then
+            echo "Kernel deb already built in this job."
+            exit 0
+          fi
+          owner="$(printf '%s' "${GITHUB_REPOSITORY%%/*}" | tr '[:upper:]' '[:lower:]')"
+          repo="${GITHUB_REPOSITORY#*/}"
+          base="https://${owner}.github.io/${repo}/apt"
+          pkgs="$(curl -fsSL "${base}/Packages" || true)"
+          fname="$(printf '%s\n' "${pkgs}" | awk '/^Package: masi-kernel-edge-sm8550$/{p=1} p && /^Filename:/{print $2; exit}')"
+          if [[ -z "${fname}" ]]; then
+            echo "No kernel package in the published apt repo. App packages will still be published."
+            exit 0
+          fi
+          mkdir -p output/debs
+          curl -fL --retry 3 -o "output/debs/$(basename "${fname}")" "${base}/${fname}"
+          echo "Reused published kernel deb: ${fname}"
+
       - name: Generate apt repository
         env:
           GNUPGHOME: ${{ github.workspace }}/packaging/apt/.gnupg
@@ -66,14 +85,6 @@ jobs:
           ./scripts/generate-apt-repo.sh
           [[ -f output/apt-repo/InRelease ]] || { echo "ERROR: unsigned apt repo (missing InRelease)"; exit 1; }
           ls -la output/apt-repo/InRelease output/apt-repo/Release.gpg packaging/apt/steamos-ubuntu.gpg
-          if compgen -G "output/debs/masi-kernel-edge-sm8550_*.deb" > /dev/null; then
-            echo "KERNEL_DEB=1" >> "$GITHUB_ENV"
-          else
-            echo "KERNEL_DEB=0" >> "$GITHUB_ENV"
-            echo "No kernel deb in this build (kbase is not in git)."
-            echo "Leaving the existing gh-pages apt repo in place."
-            echo "Publish 7.2.10 from a machine that has vendor/kernel/output/*-kbase."
-          fi
 
       - name: Upload debs artifact
         uses: actions/upload-artifact@v4
@@ -82,7 +93,6 @@ jobs:
           path: output/debs/*.deb
 
       - name: Deploy apt repo to GitHub Pages
-        if: env.KERNEL_DEB == '1'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
