@@ -44,6 +44,7 @@ from mesa_easy_manager.versions import (
     fetch_remote_versions,
     filter_missing,
     is_devel,
+    uses_mesa27_turnip_patches,
     version_sort_key,
 )
 
@@ -435,7 +436,9 @@ class MainWindow(Gtk.Window):
                 "It may crash, glitch, or break Vulkan apps.\n\n"
                 f"Source: {MESA_GIT_URL}\n"
                 f"Stored as: ~/MESA-Drivers/{DEVEL_VERSION}/\n\n"
-                "Only use this if you want to test the latest upstream code."
+                "Only use this if you want to test the latest upstream code.\n\n"
+                "Mesh shaders and wave size 32 are included in this devel build "
+                "and in Mesa 27 and later."
             )
             if not self.confirm(
                 f"{action} Mesa devel (unstable)?",
@@ -455,6 +458,16 @@ class MainWindow(Gtk.Window):
                     "then deletes the temporary build directory."
                 )
             )
+            if uses_mesa27_turnip_patches(version):
+                intro += (
+                    "\n\nMesh shaders and wave size 32 are included. "
+                    "They apply from Mesa 27 onward."
+                )
+            else:
+                intro += (
+                    "\n\nMesh shaders and wave size 32 are not included. "
+                    "Those patches apply from Mesa 27 onward, and on devel."
+                )
             if not self.confirm(
                 f"{action} Mesa {version}?",
                 intro

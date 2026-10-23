@@ -22,10 +22,10 @@
            info->pOffsets[i]) |
           BINDLESS_DESCRIPTOR_64B;
  
--      if (cmd->device->physical_device->enable_ssbo_emulation ||
+-      if (cmd->device->physical_device->compiler_options.enable_ssbo_emulation ||
 -          set_layout->has_inline_uniforms)
 +      if (set_layout &&
-+          (cmd->device->physical_device->enable_ssbo_emulation ||
++          (cmd->device->physical_device->compiler_options.enable_ssbo_emulation ||
 +           set_layout->has_inline_uniforms))
           cmd->state.dirty |= TU_CMD_DIRTY_SHADER_CONSTS;
     }
@@ -93,16 +93,17 @@
     struct tu_descriptor_set_layout *set_layout = layout->set[set].layout;
     struct tu_descriptor_set_binding_layout *binding_layout =
        &set_layout->binding[binding];
-@@ -530,6 +541,10 @@
- 
+@@ -568,6 +579,10 @@ build_bindless(struct tu_device *dev, nir_builder *b,
     unsigned set = var->data.descriptor_set;
     unsigned binding = var->data.binding;
 +   if (!layout || set >= MAX_SETS || !layout->set[set].layout ||
 +       binding >= layout->set[set].layout->binding_count) {
 +      return nir_bindless_resource_ir3(b, 32, nir_imm_int(b, 0), .desc_set = 0);
 +   }
+    const struct tu_descriptor_set_layout *set_layout =
+       layout->set[set].layout;
     const struct tu_descriptor_set_binding_layout *bind_layout =
-       &layout->set[set].layout->binding[binding];
+       &set_layout->binding[binding];
  
 @@ -916,6 +931,11 @@
     nir_deref_instr *deref = nir_src_as_deref(tex->src[deref_src_idx].src);

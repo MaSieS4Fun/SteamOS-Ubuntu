@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Silent Turnip patches for Adreno 830, applied when compiling Mesa
+  devel or any stable release from 27.0.0 onward, and not shown in the
+  patch dialog: mesh shaders emulated with compute, wave size 32 as half
+  of a 64-wide wave, cube-map direction sanitizing, A8xx bindless
+  invalidation, and the KGSL command-stream alias. The 26.2 series does
+  not receive them. Mesh shaders and wave 32 stay disabled on Adreno 740.
+  Source: MaxsTechReview / WinNative, as carried by Banners-Turnip.
+
 ### Changed
 
 - Compile no longer asks for an SM8550 or SM8750 profile. One bundled patch

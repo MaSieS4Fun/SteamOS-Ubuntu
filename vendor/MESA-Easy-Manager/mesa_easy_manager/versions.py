@@ -14,6 +14,17 @@ def is_devel(version: str) -> bool:
     return version.strip().lower() == DEVEL_VERSION
 
 
+# Mesh shaders and wave 32 track Mesa main, released as the 27 series.
+MESA27 = (27, 0, 0)
+
+
+def uses_mesa27_turnip_patches(version: str) -> bool:
+    """True for devel and for stable releases from 27.0.0 onward."""
+    if is_devel(version):
+        return True
+    return parse_version(version) >= MESA27
+
+
 def parse_version(text: str) -> tuple[int, int, int]:
     if is_devel(text):
         raise ValueError("devel is not a numeric Mesa version")

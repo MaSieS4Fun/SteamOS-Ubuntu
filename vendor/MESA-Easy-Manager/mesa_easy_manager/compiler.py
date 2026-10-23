@@ -18,8 +18,14 @@ from .constants import (
     USER_AGENT,
 )
 from .local_store import store_compiled_library
-from .rocknix import PATCHES_ROOT, SILENT_PATCH_FILES, RocknixPatch, download_patches
-from .versions import is_devel
+from .rocknix import (
+    MESA27_SILENT_PATCH_FILES,
+    PATCHES_ROOT,
+    SILENT_PATCH_FILES,
+    RocknixPatch,
+    download_patches,
+)
+from .versions import is_devel, uses_mesa27_turnip_patches
 
 LogFn = Callable[[str], None]
 
@@ -98,9 +104,23 @@ def _find_built_library(build_dir: Path) -> Path:
     return candidates[0]
 
 
-def _apply_silent_patches(source_dir: Path, log: LogFn | None) -> None:
+def _apply_silent_patches(source_dir: Path, version: str, log: LogFn | None) -> None:
     """Apply fixes that are not shown in the patch-choice dialog."""
-    for rel in SILENT_PATCH_FILES:
+    rels = list(SILENT_PATCH_FILES)
+    if uses_mesa27_turnip_patches(version):
+        _log(
+            log,
+            "Applying Mesa 27 Turnip patches "
+            "(mesh shaders, wave 32, A8xx hang fixes)",
+        )
+        rels.extend(MESA27_SILENT_PATCH_FILES)
+    else:
+        _log(
+            log,
+            "Skipping Mesa 27 Turnip patches "
+            "(mesh shaders and wave 32 apply from Mesa 27 onward)",
+        )
+    for rel in rels:
         patch_file = PATCHES_ROOT / rel
         if not patch_file.is_file():
             raise CompileError(f"Missing internal patch: {patch_file}")
@@ -226,7 +246,7 @@ def compile_version(
                 raise CompileError("Extracted Mesa source directory was not found")
             source_dir = source_candidates[0]
 
-        _apply_silent_patches(source_dir, log)
+        _apply_silent_patches(source_dir, version, log)
 
         if apply_patches:
             patches = _download_community_patches(

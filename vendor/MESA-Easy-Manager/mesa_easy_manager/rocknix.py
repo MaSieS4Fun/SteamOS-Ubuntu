@@ -3,7 +3,8 @@
 One patch set is used for SM8550 (Odin 2 / Adreno 740) and SM8750
 (Odin 3 / Adreno 830). The sync and UBO fixes are chip-agnostic. The
 A830 chip-id patch only adds device-table entries and does not change
-Adreno 740 behavior.
+Adreno 740 behavior. Mesh shaders and wave 32 are a separate silent
+set, applied on Mesa devel and on stable releases from 27.0.0 onward.
 
 All patches ship under mesa_easy_manager/patches/. Upstream attribution
 URLs are documentation-only; the original Batocera repo was removed and
@@ -36,7 +37,19 @@ BUNDLED_PATCH_FILES: tuple[str, ...] = (
 # Always applied, never listed in the compile dialog.
 SILENT_PATCH_FILES: tuple[str, ...] = (
     "silent/0001-turnip-skip-missing-vertex-shader-draw-state.patch",
+)
+
+# Mesa main / 27.x. Also applied to the rolling devel tip.
+# The 26.2 series is an older tree and does not receive these.
+# 0003–0007 are the A8xx DX12 Ultimate set (mesh shaders, wave 32, and the
+# Rebirth hang fixes). Mesh and wave 32 stay off on A7xx inside the patches.
+MESA27_SILENT_PATCH_FILES: tuple[str, ...] = (
     "silent/0002-turnip-null-descriptor-set-layout.patch",
+    "silent/0003-tu-emulate-mesh-shader-with-compute.patch",
+    "silent/0004-tu-ir3-half-wave-subgroup-32.patch",
+    "silent/0005-ir3-sanitize-cube-map-directions-a8xx.patch",
+    "silent/0006-tu-invalidate-bindless-descriptors-a8xx.patch",
+    "silent/0007-tu-kgsl-a8xx-command-streams.patch",
 )
 
 DEVICES = (
